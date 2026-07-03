@@ -441,6 +441,12 @@ class _HtmlBodyState extends State<_HtmlBody> {
   }
 
   /// Viewport + readable defaults for emails designed desktop-first.
+  ///
+  /// Marketing emails are built on fixed-width tables (600px+); without a
+  /// hard clamp they overflow a phone screen and force horizontal
+  /// scrolling. The universal `max-width`/`min-width` overrides beat both
+  /// inline styles and legacy `width="600"` attributes, and `overflow-x`
+  /// removes any residual sideways scroll.
   static String _wrap(String html) => '''
 <!DOCTYPE html>
 <html>
@@ -448,10 +454,37 @@ class _HtmlBodyState extends State<_HtmlBody> {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=3">
 <style>
-  body { margin: 12px; font-family: -apple-system, Roboto, sans-serif;
-         word-wrap: break-word; -webkit-text-size-adjust: 100%; }
-  img { max-width: 100% !important; height: auto; }
-  table { max-width: 100% !important; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
+  body {
+    padding: 12px;
+    font-family: -apple-system, Roboto, sans-serif;
+    word-wrap: break-word;
+    -webkit-text-size-adjust: 100%;
+    box-sizing: border-box;
+  }
+  * {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+  }
+  table {
+    width: auto !important;
+    height: auto !important;
+  }
+  td, th {
+    word-break: break-word;
+  }
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  pre, code {
+    white-space: pre-wrap;
+  }
 </style>
 </head>
 <body>$html</body>
