@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../providers/account_providers.dart';
 import '../../providers/core_providers.dart';
+import '../../providers/health_providers.dart';
+import '../../providers/newsletter_providers.dart';
+import '../../providers/security_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -116,6 +120,44 @@ class SettingsScreen extends ConsumerWidget {
               'assistant de boîte de réception — bientôt disponible.',
             ),
           ),
+          if (kDebugMode) ...[
+            const Divider(),
+            const _SectionHeader('Développement'),
+            ListTile(
+              leading: const Icon(Icons.science_outlined),
+              title: const Text('Injecter des emails de test'),
+              subtitle: const Text(
+                'Phishing, trackers, newsletters, vieux emails — passe par '
+                'le vrai pipeline d\'analyse pour vérifier chaque détection.',
+              ),
+              onTap: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  final count = await ref
+                      .read(syncCoordinatorProvider)
+                      .seedDemoEmails();
+                  // Refresh every dashboard fed by the stats.
+                  ref
+                    ..invalidate(dashboardStatsProvider)
+                    ..invalidate(securityPostureProvider)
+                    ..invalidate(inboxHealthProvider)
+                    ..invalidate(cleanupSuggestionsProvider);
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '$count emails de démonstration injectés — ouvrez la '
+                        'boîte, le dashboard et le Newsletter Cleaner.',
+                      ),
+                    ),
+                  );
+                } on Object catch (error) {
+                  messenger.showSnackBar(
+                    SnackBar(content: Text('Échec : $error')),
+                  );
+                }
+              },
+            ),
+          ],
           const Divider(),
           const _SectionHeader('À propos'),
           const ListTile(

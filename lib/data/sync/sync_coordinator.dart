@@ -10,6 +10,7 @@ import '../../domain/entities/account.dart' as domain;
 import '../../domain/repositories/account_repository.dart';
 import '../../domain/usecases/analyze_incoming_email.dart';
 import '../database/app_database.dart';
+import '../demo/demo_emails.dart';
 import '../services/auth/oauth_service.dart';
 import '../services/gmail/gmail_api_service.dart';
 import '../services/graph/microsoft_graph_service.dart';
@@ -81,6 +82,34 @@ class SyncCoordinator {
 
   static String _describe(Object error) =>
       error is Failure ? error.message : error.toString();
+
+  /// QA/demo: injects forged messages through the REAL analysis pipeline
+  /// (phishing, trackers, newsletters, cleanup scenarios). Idempotent —
+  /// fixed demo UIDs make re-runs upsert. Exposed in debug builds only.
+  Future<int> seedDemoEmails() async {
+    final accounts = await _accounts.enabledAccounts();
+    if (accounts.isEmpty) {
+      throw const MailProtocolFailure(
+        'Ajoutez d\'abord un compte pour recevoir les emails de test.',
+      );
+    }
+    final account = accounts.first;
+    final folderId = await _db.accountsDao.upsertFolder(
+      FoldersCompanion.insert(
+        accountId: account.id,
+        path: 'INBOX',
+        name: 'INBOX',
+        type: const Value('inbox'),
+      ),
+    );
+
+    var count = 0;
+    for (final raw in buildDemoEmails(DateTime.now())) {
+      await _ingest(account, folderId, raw, const {}, const {});
+      count++;
+    }
+    return count;
+  }
 
   Future<int> syncAccount(domain.Account account) async {
     final secret = await _resolveSecret(account);
