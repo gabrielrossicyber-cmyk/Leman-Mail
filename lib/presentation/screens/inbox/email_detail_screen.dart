@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/email_utils.dart';
@@ -10,8 +12,10 @@ import '../../providers/core_providers.dart';
 import '../../providers/inbox_providers.dart';
 import '../../widgets/risk_badge.dart';
 
-/// Lecture d'un email : verdict sécurité, bannière anti-tracking,
-/// authentification SPF/DKIM/DMARC, corps déchiffré à la demande.
+/// Lecture d'un email : rendu HTML fidèle dans une WebView durcie
+/// (JavaScript désactivé, liens ouverts dans le navigateur, contenu
+/// distant bloqué par défaut), en-tête compact avec pastille de sécurité —
+/// un tap ouvre la fiche d'analyse (score, SPF/DKIM/DMARC, signaux).
 class EmailDetailScreen extends ConsumerWidget {
   const EmailDetailScreen({super.key, required this.emailId});
 
@@ -20,7 +24,6 @@ class EmailDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(emailDetailProvider(emailId));
-    final remoteAllowed = ref.watch(remoteContentAllowedProvider(emailId));
 
     return Scaffold(
       appBar: AppBar(
@@ -44,138 +47,315 @@ class EmailDetailScreen extends ConsumerWidget {
           if (email == null) {
             return const Center(child: Text('Email introuvable.'));
           }
-          // Mark as read on open.
           if (!email.isRead) {
             Future.microtask(
               () => ref.read(emailRepositoryProvider).markRead([emailId]),
             );
           }
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                email.subject.isEmpty ? '(sans objet)' : email.subject,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${email.fromName} <${email.fromAddress}>',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                  Text(
-                    DateFormat('d MMM y, HH:mm', 'fr').format(email.date),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // --- Security verdict --------------------------------------
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  RiskBadge(
-                    level: email.phishingLevel,
-                    score: email.phishingScore,
-                  ),
-                  _AuthChip(label: 'SPF', result: email.spf),
-                  _AuthChip(label: 'DKIM', result: email.dkim),
-                  _AuthChip(label: 'DMARC', result: email.dmarc),
-                ],
-              ),
-              if (email.phishingLevel == RiskLevel.high) ...[
-                const SizedBox(height: 12),
-                _WarningBanner(
-                  color: AppTheme.riskHigh,
-                  icon: Icons.gpp_bad_outlined,
-                  text:
-                      'Cet email présente des signaux forts de phishing. '
-                      'N\'ouvrez aucun lien ni pièce jointe.',
-                  action: TextButton(
-                    onPressed: () async {
-                      final domain =
-                          EmailUtils.domainOf(email.fromAddress);
-                      await ref.read(emailRepositoryProvider).blockSender(
-                            domain != null
-                                ? '*@$domain'
-                                : email.fromAddress,
-                            reason: 'phishing',
-                          );
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Expéditeur bloqué.'),
-                          ),
-                        );
-                      }
-                    },
-                    child: const Text('Bloquer l\'expéditeur'),
-                  ),
-                ),
-              ],
-              if (email.hasTracking && !remoteAllowed) ...[
-                const SizedBox(height: 12),
-                _WarningBanner(
-                  color: AppTheme.riskMedium,
-                  icon: Icons.visibility_off_outlined,
-                  text:
-                      'Cet email tente de suivre votre activité. '
-                      '${email.trackerCount} tracker(s) bloqué(s).',
-                  action: TextButton(
-                    onPressed: () => ref
-                        .read(
-                          remoteContentAllowedProvider(emailId).notifier,
-                        )
-                        .state = true,
-                    child: const Text('Charger quand même'),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              // --- Body ----------------------------------------------------
-              // The HTML body is rendered as sanitized text in this version;
-              // a hardened WebView (JS off, remote content gated by
-              // remoteAllowed) is the natural upgrade path.
-              SelectableText(
-                data.body == null
-                    ? email.snippet
-                    : _stripHtml(data.body!),
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            ],
-          );
+          return _EmailDetailView(email: email, body: data.body);
         },
       ),
     );
   }
-
-  static String _stripHtml(String source) => source
-      .replaceAll(
-        RegExp(
-          r'<(style|script)[^>]*>.*?</\1>',
-          dotAll: true,
-          caseSensitive: false,
-        ),
-        '',
-      )
-      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'</p>', caseSensitive: false), '\n\n')
-      .replaceAll(RegExp('<[^>]+>'), '')
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .trim();
 }
+
+class _EmailDetailView extends ConsumerWidget {
+  const _EmailDetailView({required this.email, required this.body});
+
+  final EmailMessage email;
+  final String? body;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final remoteAllowed = ref.watch(remoteContentAllowedProvider(email.id));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // --- Compact header --------------------------------------------------
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                email.subject.isEmpty ? '(sans objet)' : email.subject,
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    child: Text(
+                      (email.fromName.isNotEmpty
+                              ? email.fromName
+                              : email.fromAddress)
+                          .substring(0, 1)
+                          .toUpperCase(),
+                      style: TextStyle(
+                        color: theme.colorScheme.onPrimaryContainer,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          email.fromName.isNotEmpty
+                              ? email.fromName
+                              : email.fromAddress,
+                          style: theme.textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          '${email.fromAddress} · '
+                          '${DateFormat('d MMM y, HH:mm', 'fr').format(email.date)}',
+                          style: theme.textTheme.bodySmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _SecurityDot(email: email),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // --- Warning banners --------------------------------------------------
+        if (email.phishingLevel == RiskLevel.high)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: _WarningBanner(
+              color: AppTheme.riskHigh,
+              icon: Icons.gpp_bad_outlined,
+              text: 'Signaux forts de phishing détectés. N\'ouvrez aucun '
+                  'lien ni pièce jointe.',
+              action: TextButton(
+                onPressed: () async {
+                  final senderDomain = EmailUtils.domainOf(email.fromAddress);
+                  await ref.read(emailRepositoryProvider).blockSender(
+                        senderDomain != null
+                            ? '*@$senderDomain'
+                            : email.fromAddress,
+                        reason: 'phishing',
+                      );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Expéditeur bloqué.')),
+                    );
+                  }
+                },
+                child: const Text('Bloquer l\'expéditeur'),
+              ),
+            ),
+          ),
+        if ((email.hasTracking || email.externalResourceCount > 0) &&
+            !remoteAllowed)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: _WarningBanner(
+              color: AppTheme.riskMedium,
+              icon: Icons.visibility_off_outlined,
+              text: email.hasTracking
+                  ? 'Cet email tente de suivre votre activité — '
+                      '${email.trackerCount} tracker(s) bloqué(s).'
+                  : 'Images distantes bloquées pour protéger votre vie privée.',
+              action: TextButton(
+                onPressed: () => ref
+                    .read(remoteContentAllowedProvider(email.id).notifier)
+                    .state = true,
+                child: const Text('Charger les images'),
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
+        const Divider(height: 1),
+        // --- Body -------------------------------------------------------------
+        Expanded(
+          child: body == null || body!.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(email.snippet),
+                )
+              : email.bodyIsHtml
+                  ? _HtmlBody(
+                      key: ValueKey('html-${email.id}-$remoteAllowed'),
+                      html: body!,
+                      allowRemoteContent: remoteAllowed,
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: SelectableText(
+                        body!,
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Security dot + analysis sheet
+// ---------------------------------------------------------------------------
+
+class _SecurityDot extends StatelessWidget {
+  const _SecurityDot({required this.email});
+
+  final EmailMessage email;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (email.phishingLevel) {
+      RiskLevel.low => AppTheme.riskLow,
+      RiskLevel.medium => AppTheme.riskMedium,
+      RiskLevel.high => AppTheme.riskHigh,
+    };
+    return Tooltip(
+      message: 'Analyse de sécurité',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => _showSecuritySheet(context, email),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.4),
+                  blurRadius: 6,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void _showSecuritySheet(BuildContext context, EmailMessage email) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      return DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.5,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          children: [
+            Text(
+              'Analyse de sécurité',
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                RiskBadge(level: email.phishingLevel, score: email.phishingScore),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Authentification de l\'expéditeur',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _AuthChip(label: 'SPF', result: email.spf),
+                _AuthChip(label: 'DKIM', result: email.dkim),
+                _AuthChip(label: 'DMARC', result: email.dmarc),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Vie privée',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              email.trackerCount == 0
+                  ? 'Aucun tracker détecté · score de confidentialité '
+                      '${email.privacyScore}/100.'
+                  : '${email.trackerCount} tracker(s) et '
+                      '${email.externalResourceCount} ressource(s) externe(s) '
+                      '· score de confidentialité ${email.privacyScore}/100.',
+            ),
+            if (email.findings.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Signaux détectés',
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              for (final finding in email.findings)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        _severityIcon(finding.severity),
+                        size: 18,
+                        color: _severityColor(finding.severity),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(finding.message)),
+                    ],
+                  ),
+                ),
+            ] else ...[
+              const SizedBox(height: 16),
+              const Text('Aucun signal suspect — cet email semble sûr. ✅'),
+            ],
+          ],
+        ),
+      );
+    },
+  );
+}
+
+IconData _severityIcon(String severity) => switch (severity) {
+      'critical' || 'high' => Icons.error_outline,
+      'medium' => Icons.warning_amber_outlined,
+      'low' => Icons.info_outline,
+      _ => Icons.circle_outlined,
+    };
+
+Color _severityColor(String severity) => switch (severity) {
+      'critical' || 'high' => AppTheme.riskHigh,
+      'medium' || 'low' => AppTheme.riskMedium,
+      _ => Colors.grey,
+    };
 
 class _AuthChip extends StatelessWidget {
   const _AuthChip({required this.label, required this.result});
@@ -202,6 +382,112 @@ class _AuthChip extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Hardened HTML body
+// ---------------------------------------------------------------------------
+
+class _HtmlBody extends StatefulWidget {
+  const _HtmlBody({
+    super.key,
+    required this.html,
+    required this.allowRemoteContent,
+  });
+
+  final String html;
+  final bool allowRemoteContent;
+
+  @override
+  State<_HtmlBody> createState() => _HtmlBodyState();
+}
+
+class _HtmlBodyState extends State<_HtmlBody> {
+  late final WebViewController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      // Defense in depth: an email must never execute code.
+      ..setJavaScriptMode(JavaScriptMode.disabled)
+      ..setBackgroundColor(Colors.white)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            // Taps on links open in the external browser, never inside
+            // the mail renderer.
+            if (uri != null &&
+                (uri.scheme == 'http' || uri.scheme == 'https')) {
+              launchUrl(uri, mode: LaunchMode.externalApplication);
+              return NavigationDecision.prevent;
+            }
+            if (uri != null && uri.scheme == 'mailto') {
+              launchUrl(uri);
+              return NavigationDecision.prevent;
+            }
+            // Initial loadHtmlString navigation (about:blank / data:).
+            return NavigationDecision.navigate;
+          },
+        ),
+      );
+    _load();
+  }
+
+  void _load() {
+    final content = widget.allowRemoteContent
+        ? widget.html
+        : blockRemoteContent(widget.html);
+    _controller.loadHtmlString(_wrap(content));
+  }
+
+  /// Viewport + readable defaults for emails designed desktop-first.
+  static String _wrap(String html) => '''
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=3">
+<style>
+  body { margin: 12px; font-family: -apple-system, Roboto, sans-serif;
+         word-wrap: break-word; -webkit-text-size-adjust: 100%; }
+  img { max-width: 100% !important; height: auto; }
+  table { max-width: 100% !important; }
+</style>
+</head>
+<body>$html</body>
+</html>''';
+
+  /// Neutralizes every remote reference when content is blocked:
+  /// img src/srcset, CSS url(...), background attributes and <link> tags.
+  static String blockRemoteContent(String html) => html
+      .replaceAllMapped(
+        RegExp(
+          r'''(\ssrc(?:set)?\s*=\s*["'])(https?:[^"']*)(["'])''',
+          caseSensitive: false,
+        ),
+        (m) => '${m[1]}${m[3]}',
+      )
+      .replaceAllMapped(
+        RegExp(
+          r'''(\sbackground\s*=\s*["'])(https?:[^"']*)(["'])''',
+          caseSensitive: false,
+        ),
+        (m) => '${m[1]}${m[3]}',
+      )
+      .replaceAll(
+        RegExp(r'url\s*\(\s*["\x27]?https?:[^)]*\)', caseSensitive: false),
+        'none',
+      )
+      .replaceAll(
+        RegExp(r'<link[^>]*>', caseSensitive: false),
+        '',
+      );
+
+  @override
+  Widget build(BuildContext context) =>
+      WebViewWidget(controller: _controller);
+}
+
 class _WarningBanner extends StatelessWidget {
   const _WarningBanner({
     required this.color,
@@ -218,24 +504,18 @@ class _WarningBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(icon, color: color),
-              const SizedBox(width: 8),
-              Expanded(child: Text(text)),
-            ],
-          ),
-          if (action != null)
-            Align(alignment: Alignment.centerRight, child: action),
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+          if (action != null) action!,
         ],
       ),
     );

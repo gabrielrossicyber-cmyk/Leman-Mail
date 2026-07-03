@@ -106,6 +106,21 @@ class EmailRepositoryImpl implements EmailRepository {
           .map((a) => a.toLowerCase())
           .toSet();
 
+  static List<domain.EmailFinding> _parseFindings(String json) {
+    try {
+      return [
+        for (final item
+            in (jsonDecode(json) as List<dynamic>).cast<Map<String, dynamic>>())
+          domain.EmailFinding(
+            severity: item['severity'] as String? ?? 'info',
+            message: item['message'] as String? ?? '',
+          ),
+      ];
+    } on FormatException {
+      return const [];
+    }
+  }
+
   static domain.EmailMessage _toEntity(Email row) => domain.EmailMessage(
         id: row.id,
         accountId: row.accountId,
@@ -131,6 +146,7 @@ class EmailRepositoryImpl implements EmailRepository {
         dmarc: row.dmarc,
         phishingScore: row.phishingScore,
         phishingLevel: row.phishingLevel,
+        findings: _parseFindings(row.phishingFindings),
         trackerCount: row.trackerCount,
         externalResourceCount: row.externalResourceCount,
         privacyScore: row.privacyScore,

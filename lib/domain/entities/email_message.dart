@@ -4,6 +4,16 @@ enum AuthResult { pass, fail, softfail, none, unknown }
 
 enum RiskLevel { low, medium, high }
 
+/// One phishing-analysis signal, denormalized from the engine findings so
+/// the detail screen can explain the score ("Échec SPF", "Lien raccourci"…).
+class EmailFinding {
+  const EmailFinding({required this.severity, required this.message});
+
+  /// `info` | `low` | `medium` | `high` | `critical`.
+  final String severity;
+  final String message;
+}
+
 class EmailAttachmentInfo {
   const EmailAttachmentInfo({
     required this.fileName,
@@ -47,6 +57,7 @@ class EmailMessage {
     this.dmarc = AuthResult.unknown,
     this.phishingScore = 0,
     this.phishingLevel = RiskLevel.low,
+    this.findings = const [],
     this.trackerCount = 0,
     this.externalResourceCount = 0,
     this.privacyScore = 100,
@@ -82,6 +93,7 @@ class EmailMessage {
   final AuthResult dmarc;
   final int phishingScore;
   final RiskLevel phishingLevel;
+  final List<EmailFinding> findings;
 
   // Privacy analysis.
   final int trackerCount;
