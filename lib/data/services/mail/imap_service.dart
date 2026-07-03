@@ -125,7 +125,7 @@ class ImapService implements MailSyncService {
 
     final from = message.from?.isNotEmpty == true
         ? message.from!.first
-        : MailAddress('', 'unknown@unknown');
+        : const MailAddress('', 'unknown@unknown');
 
     final attachments = <EmailAttachmentInfo>[
       for (final info in message.findContentInfo())

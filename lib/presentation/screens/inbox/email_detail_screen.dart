@@ -159,8 +159,14 @@ class EmailDetailScreen extends ConsumerWidget {
   }
 
   static String _stripHtml(String source) => source
-      .replaceAll(RegExp(r'<(style|script)[^>]*>.*?</\1>',
-          dotAll: true, caseSensitive: false), '')
+      .replaceAll(
+        RegExp(
+          r'<(style|script)[^>]*>.*?</\1>',
+          dotAll: true,
+          caseSensitive: false,
+        ),
+        '',
+      )
       .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
       .replaceAll(RegExp(r'</p>', caseSensitive: false), '\n\n')
       .replaceAll(RegExp('<[^>]+>'), '')

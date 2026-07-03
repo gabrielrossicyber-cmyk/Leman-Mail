@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/error/failures.dart';
 import '../../../domain/entities/account.dart' as domain;
-import '../../../domain/entities/email_message.dart';
 import '../mail/mail_sync_service.dart';
 
 /// Microsoft Graph implementation of [MailSyncService] for Outlook.com and

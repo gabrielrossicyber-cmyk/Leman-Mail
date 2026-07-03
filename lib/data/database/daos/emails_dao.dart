@@ -75,7 +75,9 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
 
   // ---- Aggregates feeding InboxStats / dashboards -------------------------
 
-  Future<int> countWhere(Expression<bool> Function(Emails e) predicate) async {
+  Future<int> countWhere(
+    Expression<bool> Function($EmailsTable e) predicate,
+  ) async {
     final countExp = emails.id.count();
     final query = selectOnly(emails)
       ..addColumns([countExp])

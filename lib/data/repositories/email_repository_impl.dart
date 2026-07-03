@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:drift/drift.dart';
+
 import '../../core/security/crypto_service.dart';
 import '../../domain/entities/email_message.dart' as domain;
 import '../../domain/repositories/email_repository.dart';

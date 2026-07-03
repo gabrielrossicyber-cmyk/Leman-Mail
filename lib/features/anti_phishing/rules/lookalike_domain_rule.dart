@@ -9,7 +9,7 @@ import '../phishing_rule.dart';
 /// Examples caught:
 ///  - `security@paypa1.com`  (homoglyph of paypal.com)
 ///  - `it-support@rnicrosoft.com` (rn → m)
-///  - From: "PayPal" <billing@random-host.ru> (brand in display name only)
+///  - From: `"PayPal" <billing@random-host.ru>` (brand in display name only)
 class LookalikeDomainRule implements PhishingRule {
   const LookalikeDomainRule({this.extraProtectedDomains = const {}});
 

@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:leman_mail/data/services/mail/mail_sync_service.dart';
 import 'package:leman_mail/domain/entities/email_message.dart';
 import 'package:leman_mail/domain/usecases/analyze_incoming_email.dart';
-import 'package:leman_mail/data/services/mail/mail_sync_service.dart';
 import 'package:leman_mail/features/anti_phishing/phishing_engine.dart';
 
 /// End-to-end pipeline test: a raw phishing message goes through the full

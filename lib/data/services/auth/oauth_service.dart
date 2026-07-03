@@ -90,19 +90,21 @@ class OAuthService {
   }
 
   _OAuthConfig _configFor(MailProvider provider) => switch (provider) {
-        MailProvider.gmail => _OAuthConfig(
+        MailProvider.gmail => const _OAuthConfig(
             clientId: _gmailClientId,
             scopes: _gmailScopes,
-            endpoints: const AuthorizationServiceConfiguration(
+            endpoints: AuthorizationServiceConfiguration(
               authorizationEndpoint:
                   'https://accounts.google.com/o/oauth2/v2/auth',
               tokenEndpoint: 'https://oauth2.googleapis.com/token',
             ),
           ),
-        MailProvider.outlook || MailProvider.microsoft365 => _OAuthConfig(
+        MailProvider.outlook ||
+        MailProvider.microsoft365 =>
+          const _OAuthConfig(
             clientId: _microsoftClientId,
             scopes: _microsoftScopes,
-            endpoints: const AuthorizationServiceConfiguration(
+            endpoints: AuthorizationServiceConfiguration(
               authorizationEndpoint:
                   'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
               tokenEndpoint:
