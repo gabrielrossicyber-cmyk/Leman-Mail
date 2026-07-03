@@ -44,7 +44,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/compose',
-        builder: (context, state) => const ComposeScreen(),
+        builder: (context, state) => ComposeScreen(
+          initialTo: state.uri.queryParameters['to'],
+          initialSubject: state.uri.queryParameters['subject'],
+          initialBody: state.uri.queryParameters['body'],
+        ),
       ),
       GoRoute(
         path: '/cleanup',

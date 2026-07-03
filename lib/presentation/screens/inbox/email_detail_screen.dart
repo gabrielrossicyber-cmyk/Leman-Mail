@@ -29,6 +29,40 @@ class EmailDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Message'),
         actions: [
+          if (detail.valueOrNull?.email case final email?) ...[
+            IconButton(
+              icon: const Icon(Icons.reply_outlined),
+              tooltip: 'Répondre',
+              onPressed: () => context.push(
+                Uri(
+                  path: '/compose',
+                  queryParameters: {
+                    'to': email.fromAddress,
+                    'subject': email.subject.startsWith('Re:')
+                        ? email.subject
+                        : 'Re: ${email.subject}',
+                  },
+                ).toString(),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.forward_outlined),
+              tooltip: 'Transférer',
+              onPressed: () => context.push(
+                Uri(
+                  path: '/compose',
+                  queryParameters: {
+                    'subject': email.subject.startsWith('Fwd:')
+                        ? email.subject
+                        : 'Fwd: ${email.subject}',
+                    'body': '\n\n---------- Message transféré ----------\n'
+                        'De : ${email.fromName} <${email.fromAddress}>\n'
+                        'Objet : ${email.subject}\n\n${email.snippet}',
+                  },
+                ).toString(),
+              ),
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Supprimer',
