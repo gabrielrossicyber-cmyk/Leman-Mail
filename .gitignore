@@ -1,0 +1,35 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+coverage/
+
+# Generated code (build_runner / drift)
+**/*.g.dart
+**/*.freezed.dart
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Native (regenerated via `flutter create .`)
+android/
+ios/
+macos/
+linux/
+windows/
+web/
+
+# Secrets — never commit
+*.keystore
+*.jks
+key.properties
+*.p8
+*.p12
+*.mobileprovision
+.env

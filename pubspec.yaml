@@ -1,0 +1,64 @@
+name: leman_mail
+description: >-
+  Leman Mail — Votre boîte mail, sécurisée, maîtrisée et intelligente.
+  Développé par Leman Cyber Security.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management & DI
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.2
+
+  # Database (SQLite)
+  drift: ^2.22.1
+  drift_flutter: ^0.2.4
+  path_provider: ^2.1.5
+  path: ^1.9.0
+
+  # Security
+  flutter_secure_storage: ^9.2.2
+  local_auth: ^2.3.0
+  cryptography: ^2.7.0
+  crypto: ^3.0.6
+
+  # Mail protocols & APIs
+  enough_mail: ^2.1.6
+  googleapis: ^13.2.0
+  http: ^1.2.2
+
+  # OAuth 2.0 / OpenID Connect (PKCE)
+  flutter_appauth: ^8.0.1
+
+  # HTML parsing (tracker & link analysis)
+  html: ^0.15.4
+
+  # UI
+  fl_chart: ^0.69.2
+  intl: ^0.19.0
+  url_launcher: ^6.3.1
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  drift_dev: ^2.22.1
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
