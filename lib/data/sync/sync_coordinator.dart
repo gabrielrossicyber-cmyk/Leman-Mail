@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/error/failures.dart';
 import '../../core/security/crypto_service.dart';
 import '../../core/utils/email_utils.dart';
 import '../../domain/entities/account.dart' as domain;
@@ -50,13 +51,36 @@ class SyncCoordinator {
       };
 
   /// Synchronizes every enabled account. Returns the number of new emails.
+  ///
+  /// One broken account (wrong password, unreachable Proton Bridge…) must
+  /// not prevent the others from syncing: failures are collected per
+  /// account and reported once at the end.
   Future<int> syncAllAccounts() async {
     var newEmails = 0;
+    final failures = <String, Object>{};
     for (final account in await _accounts.enabledAccounts()) {
-      newEmails += await syncAccount(account);
+      try {
+        newEmails += await syncAccount(account);
+      } on Object catch (error) {
+        failures[account.email] = error;
+      }
+    }
+    if (failures.isNotEmpty) {
+      final details = failures.entries
+          .map((e) => '${e.key} : ${_describe(e.value)}')
+          .join('\n');
+      throw MailProtocolFailure(
+        newEmails > 0
+            ? '$newEmails nouveaux emails, mais certains comptes ont '
+                'échoué :\n$details'
+            : 'Synchronisation impossible :\n$details',
+      );
     }
     return newEmails;
   }
+
+  static String _describe(Object error) =>
+      error is Failure ? error.message : error.toString();
 
   Future<int> syncAccount(domain.Account account) async {
     final secret = await _resolveSecret(account);

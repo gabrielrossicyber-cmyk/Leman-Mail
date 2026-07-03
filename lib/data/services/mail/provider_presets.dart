@@ -79,8 +79,11 @@ const providerPresets = <ProviderPreset>[
     imapPort: 1143,
     smtpHost: '127.0.0.1',
     smtpPort: 1025,
-    helpText: 'Proton Mail nécessite Proton Mail Bridge (chiffrement '
-        'bout-en-bout). Renseignez les identifiants fournis par Bridge.',
+    helpText: '⚠️ Proton Mail exige Proton Mail Bridge, un logiciel qui '
+        'n\'existe que sur ordinateur (macOS/Windows/Linux) : ce compte ne '
+        'peut pas se synchroniser directement depuis un téléphone. '
+        'Renseignez les identifiants fournis par Bridge uniquement si un '
+        'Bridge est joignable.',
   ),
   ProviderPreset(
     provider: MailProvider.imap,

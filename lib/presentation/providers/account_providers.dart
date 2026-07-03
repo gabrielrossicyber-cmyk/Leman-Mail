@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../data/services/mail/imap_service.dart';
 import '../../data/services/mail/provider_presets.dart';
 import '../../domain/entities/account.dart';
 import '../../domain/repositories/account_repository.dart';
@@ -51,19 +52,31 @@ class AddAccountController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
+      final draft = Account(
+        id: 0,
+        uuid: const Uuid().v4(),
+        email: email,
+        displayName: email.split('@').first,
+        provider: preset.provider,
+        authMethod: AuthMethod.password,
+        imapHost: imapHost ?? preset.imapHost,
+        imapPort: imapPort ?? preset.imapPort,
+        smtpHost: smtpHost ?? preset.smtpHost,
+        smtpPort: smtpPort ?? preset.smtpPort,
+      );
+
+      // Validate the credentials against the real server BEFORE saving:
+      // a wrong password or unreachable host must fail here, visibly,
+      // not silently during the first background sync.
+      final probe = ImapService();
+      try {
+        await probe.connect(draft, secret: password);
+      } finally {
+        await probe.disconnect();
+      }
+
       await ref.read(accountRepositoryProvider).addAccount(
-            draft: Account(
-              id: 0,
-              uuid: const Uuid().v4(),
-              email: email,
-              displayName: email.split('@').first,
-              provider: preset.provider,
-              authMethod: AuthMethod.password,
-              imapHost: imapHost ?? preset.imapHost,
-              imapPort: imapPort ?? preset.imapPort,
-              smtpHost: smtpHost ?? preset.smtpHost,
-              smtpPort: smtpPort ?? preset.smtpPort,
-            ),
+            draft: draft,
             credentials: AccountCredentials(password: password),
           );
       await ref.read(syncControllerProvider.notifier).syncNow();

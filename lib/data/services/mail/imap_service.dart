@@ -38,7 +38,14 @@ class ImapService implements MailSyncService {
       }
     } on ImapException catch (e) {
       throw AuthenticationFailure(
-        'Connexion IMAP refusée pour ${account.email}.',
+        'Identifiants refusés pour ${account.email} — vérifiez l\'adresse et '
+        'le mot de passe d\'application.',
+        cause: e,
+      );
+    } on Exception catch (e) {
+      throw NetworkFailure(
+        'Impossible de joindre $host:${account.imapPort} — vérifiez le '
+        'serveur IMAP et votre connexion.',
         cause: e,
       );
     }
@@ -92,6 +99,8 @@ class ImapService implements MailSyncService {
     return 'other';
   }
 
+  static const _fetchCriteria = '(UID FLAGS RFC822.SIZE BODY.PEEK[])';
+
   @override
   Future<List<RawEmail>> fetchNewMessages(
     RemoteFolder folder, {
@@ -100,21 +109,35 @@ class ImapService implements MailSyncService {
   }) async {
     final client = _connected;
     final mailbox = await client.selectMailboxByPath(folder.path);
-    final uidNext = mailbox.uidNext ?? (sinceUid + limit + 1);
-    if (sinceUid > 0 && uidNext <= sinceUid + 1) return const [];
+    final exists = mailbox.messagesExists;
+    if (exists == 0) return const [];
 
-    final start = sinceUid + 1;
-    final sequence = MessageSequence.fromRangeToLast(start, isUidSequence: true);
-    final fetch = await client.uidFetchMessages(
-      sequence,
-      '(UID FLAGS RFC822.SIZE BODY.PEEK[])',
-    );
-
-    final result = <RawEmail>[];
-    for (final message in fetch.messages.take(limit)) {
-      result.add(_toRawEmail(message));
+    FetchImapResult fetch;
+    if (sinceUid <= 0) {
+      // Initial sync: only the [limit] most recent messages, addressed by
+      // sequence numbers — never the whole mailbox.
+      final start = exists > limit ? exists - limit + 1 : 1;
+      fetch = await client.fetchMessages(
+        MessageSequence.fromRange(start, exists),
+        _fetchCriteria,
+      );
+    } else {
+      // Incremental sync: everything newer than the stored UID cursor.
+      final uidNext = mailbox.uidNext;
+      if (uidNext != null && uidNext <= sinceUid + 1) return const [];
+      fetch = await client.uidFetchMessages(
+        MessageSequence.fromRangeToLast(sinceUid + 1, isUidSequence: true),
+        _fetchCriteria,
+      );
     }
-    return result;
+
+    final result = <RawEmail>[
+      for (final message in fetch.messages)
+        if ((message.uid ?? 0) > sinceUid) _toRawEmail(message),
+    ]..sort((a, b) => a.uid.compareTo(b.uid));
+    return result.length > limit
+        ? result.sublist(result.length - limit)
+        : result;
   }
 
   RawEmail _toRawEmail(MimeMessage message) {

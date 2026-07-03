@@ -34,8 +34,24 @@ class AccountsDao extends DatabaseAccessor<AppDatabase>
   Future<void> deleteAccount(int accountId) =>
       (delete(accounts)..where((a) => a.id.equals(accountId))).go();
 
-  Future<int> upsertFolder(FoldersCompanion folder) =>
-      into(folders).insertOnConflictUpdate(folder);
+  /// Upsert keyed on (accountId, path). Done manually rather than via
+  /// `insertOnConflictUpdate` because the returned row id must be reliable
+  /// on the update path — emails reference it as a foreign key.
+  Future<int> upsertFolder(FoldersCompanion folder) async {
+    final existing = await (select(folders)
+          ..where(
+            (f) =>
+                f.accountId.equals(folder.accountId.value) &
+                f.path.equals(folder.path.value),
+          ))
+        .getSingleOrNull();
+    if (existing != null) {
+      await (update(folders)..where((f) => f.id.equals(existing.id)))
+          .write(folder);
+      return existing.id;
+    }
+    return into(folders).insert(folder);
+  }
 
   Future<List<Folder>> foldersOf(int accountId) =>
       (select(folders)..where((f) => f.accountId.equals(accountId))).get();

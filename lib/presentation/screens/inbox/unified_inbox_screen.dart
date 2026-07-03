@@ -19,6 +19,25 @@ class UnifiedInboxScreen extends ConsumerWidget {
     final selectedAccount = ref.watch(selectedAccountIdProvider);
     final sync = ref.watch(syncControllerProvider);
 
+    // Surface sync results: errors were previously swallowed silently.
+    ref.listen(syncControllerProvider, (previous, next) {
+      if (next is AsyncError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${next.error}'),
+            duration: const Duration(seconds: 8),
+            showCloseIcon: true,
+          ),
+        );
+      } else if (previous is AsyncLoading &&
+          next is AsyncData<int> &&
+          next.value > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${next.value} nouveaux emails.')),
+        );
+      }
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Boîte unifiée'),
