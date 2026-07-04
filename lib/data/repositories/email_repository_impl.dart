@@ -18,12 +18,14 @@ class EmailRepositoryImpl implements EmailRepository {
   @override
   Stream<List<domain.EmailMessage>> watchInbox({
     int? accountId,
+    String? folderType,
     String filter = 'all',
     int limit = 100,
   }) =>
       _db.emailsDao
           .watchInbox(
             accountId: accountId,
+            folderType: folderType,
             filter: InboxFilter.values.firstWhere(
               (f) => f.name == filter,
               orElse: () => InboxFilter.all,

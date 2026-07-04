@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show IconData, Icons;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/email_message.dart';
@@ -23,11 +24,35 @@ final inboxFilterProvider =
 /// null = unified inbox (all accounts).
 final selectedAccountIdProvider = StateProvider<int?>((ref) => null);
 
+/// Folder shown in the list — drives the drawer selection.
+enum MailFolderUi { inbox, sent, spam, archive }
+
+extension MailFolderUiMeta on MailFolderUi {
+  String get label => switch (this) {
+        MailFolderUi.inbox => 'Boîte de réception',
+        MailFolderUi.sent => 'Envoyés',
+        MailFolderUi.spam => 'Spam',
+        MailFolderUi.archive => 'Archive',
+      };
+
+  IconData get icon => switch (this) {
+        MailFolderUi.inbox => Icons.inbox_outlined,
+        MailFolderUi.sent => Icons.send_outlined,
+        MailFolderUi.spam => Icons.report_gmailerrorred_outlined,
+        MailFolderUi.archive => Icons.archive_outlined,
+      };
+}
+
+final selectedFolderProvider =
+    StateProvider<MailFolderUi>((ref) => MailFolderUi.inbox);
+
 final inboxEmailsProvider = StreamProvider<List<EmailMessage>>((ref) {
   final filter = ref.watch(inboxFilterProvider);
   final accountId = ref.watch(selectedAccountIdProvider);
+  final folder = ref.watch(selectedFolderProvider);
   return ref.watch(emailRepositoryProvider).watchInbox(
         accountId: accountId,
+        folderType: folder.name,
         filter: filter.name,
         limit: 200,
       );

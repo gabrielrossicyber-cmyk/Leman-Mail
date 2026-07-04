@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/constants/app_constants.dart';
+import '../../../domain/entities/account.dart';
 import '../../providers/account_providers.dart';
 import '../../providers/inbox_providers.dart';
 import '../../widgets/email_tile.dart';
 
-/// Boîte de réception unifiée : tous les comptes, filtres rapides,
-/// compteurs et pull-to-refresh.
+/// Boîte de réception : filtres rapides en chips en haut, et un volet
+/// latéral (drawer) pour la navigation lourde — comptes et dossiers —
+/// afin de ne pas surcharger l'écran principal.
 class UnifiedInboxScreen extends ConsumerWidget {
   const UnifiedInboxScreen({super.key});
 
@@ -16,7 +19,8 @@ class UnifiedInboxScreen extends ConsumerWidget {
     final emails = ref.watch(inboxEmailsProvider);
     final accounts = ref.watch(accountsProvider);
     final filter = ref.watch(inboxFilterProvider);
-    final selectedAccount = ref.watch(selectedAccountIdProvider);
+    final selectedAccountId = ref.watch(selectedAccountIdProvider);
+    final folder = ref.watch(selectedFolderProvider);
     final sync = ref.watch(syncControllerProvider);
 
     // Surface sync results: errors were previously swallowed silently.
@@ -38,9 +42,31 @@ class UnifiedInboxScreen extends ConsumerWidget {
       }
     });
 
+    final accountList = accounts.valueOrNull ?? [];
+    final selectedAccount = selectedAccountId == null
+        ? null
+        : accountList
+            .where((a) => a.id == selectedAccountId)
+            .firstOrNull;
+
     return Scaffold(
+      drawer: _MailDrawer(
+        accounts: accountList,
+        selectedAccountId: selectedAccountId,
+        selectedFolder: folder,
+      ),
       appBar: AppBar(
-        title: const Text('Boîte unifiée'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(folder.label),
+            Text(
+              selectedAccount?.email ?? 'Tous les comptes',
+              style: Theme.of(context).textTheme.bodySmall,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
         actions: [
           if (sync.isLoading)
             const Padding(
@@ -58,58 +84,16 @@ class UnifiedInboxScreen extends ConsumerWidget {
               onPressed: () =>
                   ref.read(syncControllerProvider.notifier).syncNow(),
             ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => context.push('/settings'),
-          ),
         ],
       ),
       body: Column(
         children: [
-          // Account selector (unified + one chip per account).
-          accounts.when(
-            data: (list) => SizedBox(
-              height: 48,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: const Text('Tous les comptes'),
-                      selected: selectedAccount == null,
-                      onSelected: (_) => ref
-                          .read(selectedAccountIdProvider.notifier)
-                          .state = null,
-                    ),
-                  ),
-                  for (final account in list)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        avatar: CircleAvatar(
-                          backgroundColor: Color(account.colorValue),
-                        ),
-                        label: Text(account.email),
-                        selected: selectedAccount == account.id,
-                        onSelected: (_) => ref
-                            .read(selectedAccountIdProvider.notifier)
-                            .state = account.id,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            loading: () => const SizedBox(height: 48),
-            error: (_, __) => const SizedBox(height: 48),
-          ),
-          // Quick filters.
+          // Quick filters — the only horizontal row kept on the main page.
           SizedBox(
-            height: 44,
+            height: 48,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               children: [
                 for (final f in InboxFilterUi.values)
                   Padding(
@@ -117,6 +101,7 @@ class UnifiedInboxScreen extends ConsumerWidget {
                     child: FilterChip(
                       label: Text(f.label),
                       selected: filter == f,
+                      showCheckmark: false,
                       onSelected: (_) =>
                           ref.read(inboxFilterProvider.notifier).state = f,
                     ),
@@ -128,7 +113,8 @@ class UnifiedInboxScreen extends ConsumerWidget {
           Expanded(
             child: emails.when(
               data: (list) => list.isEmpty
-                  ? _EmptyInbox(
+                  ? _EmptyState(
+                      hasAccounts: accountList.isNotEmpty,
                       onAddAccount: () => context.push('/add-account'),
                     )
                   : RefreshIndicator(
@@ -160,9 +146,191 @@ class UnifiedInboxScreen extends ConsumerWidget {
   }
 }
 
-class _EmptyInbox extends StatelessWidget {
-  const _EmptyInbox({required this.onAddAccount});
+/// Volet latéral : comptes, dossiers, raccourcis. Se ferme après chaque
+/// sélection pour revenir immédiatement à la liste.
+class _MailDrawer extends ConsumerWidget {
+  const _MailDrawer({
+    required this.accounts,
+    required this.selectedAccountId,
+    required this.selectedFolder,
+  });
 
+  final List<Account> accounts;
+  final int? selectedAccountId;
+  final MailFolderUi selectedFolder;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+
+    void close() => Navigator.pop(context);
+
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            // --- Brand header -------------------------------------------
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.shield_outlined,
+                        color: theme.colorScheme.primary,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        AppConstants.appName,
+                        style: theme.textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    AppConstants.tagline,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const Divider(),
+            // --- Accounts ------------------------------------------------
+            _DrawerSectionTitle('Comptes'),
+            _DrawerTile(
+              leading: const Icon(Icons.all_inbox_outlined),
+              label: 'Tous les comptes',
+              selected: selectedAccountId == null,
+              onTap: () {
+                ref.read(selectedAccountIdProvider.notifier).state = null;
+                close();
+              },
+            ),
+            for (final account in accounts)
+              _DrawerTile(
+                leading: CircleAvatar(
+                  radius: 10,
+                  backgroundColor: Color(account.colorValue),
+                  child: Text(
+                    account.email.substring(0, 1).toUpperCase(),
+                    style: const TextStyle(fontSize: 11, color: Colors.white),
+                  ),
+                ),
+                label: account.email,
+                selected: selectedAccountId == account.id,
+                onTap: () {
+                  ref.read(selectedAccountIdProvider.notifier).state =
+                      account.id;
+                  close();
+                },
+              ),
+            const Divider(),
+            // --- Folders --------------------------------------------------
+            _DrawerSectionTitle('Dossiers'),
+            for (final folder in MailFolderUi.values)
+              _DrawerTile(
+                leading: Icon(folder.icon),
+                label: folder.label,
+                selected: selectedFolder == folder,
+                onTap: () {
+                  ref.read(selectedFolderProvider.notifier).state = folder;
+                  close();
+                },
+              ),
+            const Divider(),
+            // --- Shortcuts ------------------------------------------------
+            _DrawerTile(
+              leading: const Icon(Icons.person_add_alt_outlined),
+              label: 'Ajouter un compte',
+              onTap: () {
+                close();
+                context.push('/add-account');
+              },
+            ),
+            _DrawerTile(
+              leading: const Icon(Icons.settings_outlined),
+              label: 'Réglages',
+              onTap: () {
+                close();
+                context.push('/settings');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerSectionTitle extends StatelessWidget {
+  const _DrawerSectionTitle(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+            ),
+      ),
+    );
+  }
+}
+
+class _DrawerTile extends StatelessWidget {
+  const _DrawerTile({
+    required this.leading,
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+  });
+
+  final Widget leading;
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: ListTile(
+        dense: true,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(999),
+        ),
+        selected: selected,
+        selectedTileColor: theme.colorScheme.primaryContainer,
+        leading: leading,
+        title: Text(
+          label,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.hasAccounts, required this.onAddAccount});
+
+  final bool hasAccounts;
   final VoidCallback onAddAccount;
 
   @override
@@ -177,13 +345,19 @@ class _EmptyInbox extends StatelessWidget {
             color: Theme.of(context).colorScheme.primary,
           ),
           const SizedBox(height: 16),
-          const Text('Aucun email — ajoutez un compte pour commencer.'),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: onAddAccount,
-            icon: const Icon(Icons.add),
-            label: const Text('Ajouter un compte'),
+          Text(
+            hasAccounts
+                ? 'Aucun email dans ce dossier avec ces filtres.'
+                : 'Ajoutez un compte pour commencer.',
           ),
+          if (!hasAccounts) ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onAddAccount,
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter un compte'),
+            ),
+          ],
         ],
       ),
     );

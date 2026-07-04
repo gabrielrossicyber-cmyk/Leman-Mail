@@ -2,9 +2,11 @@ import '../../features/health/inbox_health_calculator.dart';
 import '../entities/email_message.dart';
 
 abstract interface class EmailRepository {
-  /// Reactive unified inbox (all accounts) or single-account view.
+  /// Reactive unified inbox (all accounts) or single-account view,
+  /// optionally restricted to one folder type ('inbox', 'sent', 'spam'…).
   Stream<List<EmailMessage>> watchInbox({
     int? accountId,
+    String? folderType,
     String filter,
     int limit,
   });

@@ -128,9 +128,10 @@ class SyncCoordinator {
       };
       final blocked = await _db.emailsDao.allBlockedSenders();
 
+      const syncedTypes = {'inbox', 'spam', 'sent', 'archive'};
       var total = 0;
       for (final folder in await service.listFolders()) {
-        if (folder.type != 'inbox' && folder.type != 'spam') continue;
+        if (!syncedTypes.contains(folder.type)) continue;
         total += await _syncFolder(
           account,
           service,

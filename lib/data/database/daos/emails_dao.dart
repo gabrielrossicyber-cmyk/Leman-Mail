@@ -8,13 +8,15 @@ part 'emails_dao.g.dart';
 /// Filters available in the unified inbox.
 enum InboxFilter { all, unread, attachments, favorites, priority, suspicious }
 
-@DriftAccessor(tables: [Emails, Attachments, BlockedSenders])
+@DriftAccessor(tables: [Emails, Attachments, BlockedSenders, Folders])
 class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
   EmailsDao(super.db);
 
-  /// Unified inbox stream: newest first, across all (or one) account(s).
+  /// Unified inbox stream: newest first, across all (or one) account(s),
+  /// optionally restricted to one folder type ('inbox', 'sent', 'spam'…).
   Stream<List<Email>> watchInbox({
     int? accountId,
+    String? folderType,
     InboxFilter filter = InboxFilter.all,
     int limit = 100,
   }) {
@@ -23,6 +25,12 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
       ..limit(limit);
     if (accountId != null) {
       query.where((e) => e.accountId.equals(accountId));
+    }
+    if (folderType != null) {
+      final folderIds = selectOnly(folders)
+        ..addColumns([folders.id])
+        ..where(folders.type.equals(folderType));
+      query.where((e) => e.folderId.isInQuery(folderIds));
     }
     switch (filter) {
       case InboxFilter.unread:
