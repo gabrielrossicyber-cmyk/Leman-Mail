@@ -81,12 +81,28 @@ class ImapService implements MailSyncService {
     return [
       for (final box in boxes)
         RemoteFolder(
-          path: box.path,
+          // encodedPath = forme protocolaire (UTF-7 modifié) : c'est elle
+          // qu'il faut renvoyer au serveur. Les chemins Gmail localisés
+          // (« [Gmail]/Messages envoyés ») cassent le SELECT sinon
+          // (BAD Could not parse command).
+          path: box.encodedPath,
           name: box.name,
           type: _folderType(box),
           uidValidity: box.uidValidity,
         ),
     ];
+  }
+
+  /// Sélectionne un dossier à partir du chemin protocolaire stocké,
+  /// en laissant enough_mail gérer le quoting de la commande SELECT.
+  Future<Mailbox> _selectFolder(RemoteFolder folder) {
+    final mailbox = Mailbox(
+      encodedName: folder.name,
+      encodedPath: folder.path,
+      flags: const [],
+      pathSeparator: '/',
+    );
+    return _connected.selectMailbox(mailbox);
   }
 
   static String _folderType(Mailbox box) {
@@ -108,7 +124,7 @@ class ImapService implements MailSyncService {
     int limit = 50,
   }) async {
     final client = _connected;
-    final mailbox = await client.selectMailboxByPath(folder.path);
+    final mailbox = await _selectFolder(folder);
     final exists = mailbox.messagesExists;
     if (exists == 0) return const [];
 
@@ -193,7 +209,7 @@ class ImapService implements MailSyncService {
     bool read = true,
   }) async {
     final client = _connected;
-    await client.selectMailboxByPath(folder.path);
+    await _selectFolder(folder);
     final sequence = MessageSequence.fromIds(uids, isUid: true);
     await client.uidStore(
       sequence,
@@ -209,7 +225,7 @@ class ImapService implements MailSyncService {
     required bool flagged,
   }) async {
     final client = _connected;
-    await client.selectMailboxByPath(folder.path);
+    await _selectFolder(folder);
     final sequence = MessageSequence.fromIds(uids, isUid: true);
     await client.uidStore(
       sequence,
@@ -221,7 +237,7 @@ class ImapService implements MailSyncService {
   @override
   Future<void> deleteMessages(RemoteFolder folder, List<int> uids) async {
     final client = _connected;
-    await client.selectMailboxByPath(folder.path);
+    await _selectFolder(folder);
     final sequence = MessageSequence.fromIds(uids, isUid: true);
     await client.uidStore(
       sequence,
@@ -238,7 +254,7 @@ class ImapService implements MailSyncService {
     List<int> uids,
   ) async {
     final client = _connected;
-    await client.selectMailboxByPath(from.path);
+    await _selectFolder(from);
     final sequence = MessageSequence.fromIds(uids, isUid: true);
     final target = Mailbox(
       encodedName: to.name,

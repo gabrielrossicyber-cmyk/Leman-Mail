@@ -22,6 +22,9 @@ abstract interface class EmailRepository {
   /// Decrypts and returns the full body of one message.
   Future<String?> loadBody(int emailId);
 
+  /// Métadonnées des pièces jointes d'un message.
+  Future<List<EmailAttachmentInfo>> attachmentsOf(int emailId);
+
   Future<void> markRead(List<int> emailIds, {bool read});
   Future<void> setFlagged(List<int> emailIds, {required bool flagged});
   Future<void> delete(List<int> emailIds);

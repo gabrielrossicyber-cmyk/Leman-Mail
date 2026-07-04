@@ -216,23 +216,37 @@ class SyncCoordinator {
       final blocked = await _db.emailsDao.allBlockedSenders();
 
       const syncedTypes = {'inbox', 'spam', 'sent', 'archive'};
+      final folderErrors = <String, Object>{};
       for (final folder in await service.listFolders()) {
         if (!syncedTypes.contains(folder.type)) continue;
-        await _syncFolder(
-          account,
-          service,
-          folder,
-          knownSenders: knownSenders,
-          contactDomains: contactDomains,
-          blockedPatterns: blocked.map((b) => b.pattern).toList(),
-          // Seuls les nouveaux messages de la boîte de réception (et spam)
-          // méritent une notification — pas nos propres envoyés.
-          collector: folder.type == 'inbox' || folder.type == 'spam'
-              ? collector
-              : null,
-        );
+        try {
+          await _syncFolder(
+            account,
+            service,
+            folder,
+            knownSenders: knownSenders,
+            contactDomains: contactDomains,
+            blockedPatterns: blocked.map((b) => b.pattern).toList(),
+            // Seuls les nouveaux messages de la boîte de réception (et
+            // spam) méritent une notification — pas nos propres envoyés.
+            collector: folder.type == 'inbox' || folder.type == 'spam'
+                ? collector
+                : null,
+          );
+        } on Object catch (error) {
+          // Un dossier en échec (nom exotique, verrouillé…) ne doit pas
+          // empêcher la synchronisation des autres dossiers du compte.
+          folderErrors[folder.name] = error;
+        }
       }
       await _db.accountsDao.updateLastSync(account.id, DateTime.now());
+      if (folderErrors.isNotEmpty) {
+        throw MailProtocolFailure(
+          'Dossier(s) en échec : ${folderErrors.entries.map(
+                (e) => '${e.key} (${_describe(e.value)})',
+              ).join(', ')}',
+        );
+      }
     } finally {
       await service.disconnect();
     }

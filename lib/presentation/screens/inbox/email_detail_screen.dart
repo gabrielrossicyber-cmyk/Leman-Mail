@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/email_utils.dart';
 import '../../../domain/entities/email_message.dart';
+import '../../../features/cleanup/smart_cleanup_analyzer.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/inbox_providers.dart';
 import '../../widgets/risk_badge.dart';
@@ -102,7 +103,11 @@ class EmailDetailScreen extends ConsumerWidget {
               () => ref.read(emailRepositoryProvider).markRead([emailId]),
             );
           }
-          return _EmailDetailView(email: email, body: data.body);
+          return _EmailDetailView(
+            email: email,
+            body: data.body,
+            attachments: data.attachments,
+          );
         },
       ),
     );
@@ -110,10 +115,15 @@ class EmailDetailScreen extends ConsumerWidget {
 }
 
 class _EmailDetailView extends ConsumerWidget {
-  const _EmailDetailView({required this.email, required this.body});
+  const _EmailDetailView({
+    required this.email,
+    required this.body,
+    required this.attachments,
+  });
 
   final EmailMessage email;
   final String? body;
+  final List<EmailAttachmentInfo> attachments;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -173,6 +183,51 @@ class _EmailDetailView extends ConsumerWidget {
                     .state = true,
                 child: const Text('Charger les images'),
               ),
+            ),
+          ),
+        // --- Attachments -------------------------------------------------------
+        if (attachments.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final attachment in attachments)
+                  ActionChip(
+                    avatar: Icon(
+                      attachment.isDangerous
+                          ? Icons.gpp_bad_outlined
+                          : Icons.attach_file,
+                      size: 18,
+                      color: attachment.isDangerous ? AppTheme.riskHigh : null,
+                    ),
+                    label: Text(
+                      '${attachment.fileName} · '
+                      '${SmartCleanupAnalyzer.formatBytes(attachment.sizeBytes)}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    labelStyle: attachment.isDangerous
+                        ? const TextStyle(color: AppTheme.riskHigh)
+                        : null,
+                    side: attachment.isDangerous
+                        ? const BorderSide(color: AppTheme.riskHigh)
+                        : null,
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            attachment.isDangerous
+                                ? '🔴 Pièce jointe dangereuse — '
+                                    'ouverture bloquée par Leman Mail.'
+                                : 'Téléchargement des pièces jointes : '
+                                    'disponible dans une prochaine version.',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
             ),
           ),
         const SizedBox(height: 12),

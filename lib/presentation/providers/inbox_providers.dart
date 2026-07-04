@@ -58,13 +58,19 @@ final inboxEmailsProvider = StreamProvider<List<EmailMessage>>((ref) {
       );
 });
 
-final emailDetailProvider =
-    FutureProvider.family<({EmailMessage? email, String? body}), int>(
-        (ref, emailId) async {
+final emailDetailProvider = FutureProvider.family<
+    ({
+      EmailMessage? email,
+      String? body,
+      List<EmailAttachmentInfo> attachments,
+    }),
+    int>((ref, emailId) async {
   final repo = ref.watch(emailRepositoryProvider);
   final email = await repo.byId(emailId);
   final body = email == null ? null : await repo.loadBody(emailId);
-  return (email: email, body: body);
+  final attachments =
+      email == null ? <EmailAttachmentInfo>[] : await repo.attachmentsOf(emailId);
+  return (email: email, body: body, attachments: attachments);
 });
 
 /// Per-email remote-content policy: blocked by default, the user can

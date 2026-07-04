@@ -61,6 +61,20 @@ class EmailRepositoryImpl implements EmailRepository {
   }
 
   @override
+  Future<List<domain.EmailAttachmentInfo>> attachmentsOf(int emailId) async {
+    final rows = await _db.emailsDao.attachmentsOf(emailId);
+    return [
+      for (final row in rows)
+        domain.EmailAttachmentInfo(
+          fileName: row.fileName,
+          mimeType: row.mimeType,
+          sizeBytes: row.sizeBytes,
+          isDangerous: row.isDangerous,
+        ),
+    ];
+  }
+
+  @override
   Future<void> markRead(List<int> emailIds, {bool read = true}) =>
       _db.emailsDao.markRead(emailIds, read: read);
 
