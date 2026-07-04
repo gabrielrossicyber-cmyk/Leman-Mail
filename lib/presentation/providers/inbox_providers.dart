@@ -75,6 +75,54 @@ final remoteContentAllowedProvider =
 /// Multi-selection dans la liste (appui long). Vide = mode normal.
 final inboxSelectionProvider = StateProvider<Set<int>>((ref) => {});
 
+/// Un fil de conversation dans la liste : dernier message + agrégats.
+class ThreadSummary {
+  const ThreadSummary({
+    required this.latest,
+    required this.count,
+    required this.unreadCount,
+    required this.emailIds,
+    required this.threadKey,
+  });
+
+  final EmailMessage latest;
+  final int count;
+  final int unreadCount;
+
+  /// Tous les ids du fil (sélection multiple, marquage groupé).
+  final List<int> emailIds;
+  final String threadKey;
+
+  bool get isThread => count > 1;
+}
+
+/// Boîte regroupée par fils de conversation : un élément par fil, porté
+/// par son message le plus récent, trié par date décroissante. Les
+/// filtres rapides s'appliquent avant regroupement.
+final threadedInboxProvider = Provider<AsyncValue<List<ThreadSummary>>>((ref) {
+  final emails = ref.watch(inboxEmailsProvider);
+  return emails.whenData((list) {
+    final groups = <String, List<EmailMessage>>{};
+    for (final email in list) {
+      // Les anciens messages sans threadId restent des fils solitaires.
+      final key = email.threadId ?? 'standalone-${email.id}';
+      groups.putIfAbsent(key, () => []).add(email);
+    }
+    final threads = [
+      for (final entry in groups.entries)
+        ThreadSummary(
+          latest: entry.value
+              .reduce((a, b) => a.date.isAfter(b.date) ? a : b),
+          count: entry.value.length,
+          unreadCount: entry.value.where((e) => !e.isRead).length,
+          emailIds: [for (final e in entry.value) e.id],
+          threadKey: entry.key,
+        ),
+    ]..sort((a, b) => b.latest.date.compareTo(a.latest.date));
+    return threads;
+  });
+});
+
 /// Résultats de la recherche plein texte locale.
 final searchResultsProvider =
     FutureProvider.family<List<EmailMessage>, String>((ref, query) {

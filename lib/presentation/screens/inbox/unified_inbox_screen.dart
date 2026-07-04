@@ -20,6 +20,7 @@ class UnifiedInboxScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final emails = ref.watch(inboxEmailsProvider);
+    final threads = ref.watch(threadedInboxProvider);
     final accounts = ref.watch(accountsProvider);
     final filter = ref.watch(inboxFilterProvider);
     final selectedAccountId = ref.watch(selectedAccountIdProvider);
@@ -125,7 +126,7 @@ class UnifiedInboxScreen extends ConsumerWidget {
           ),
           const Divider(height: 1),
           Expanded(
-            child: emails.when(
+            child: threads.when(
               data: (list) => list.isEmpty
                   ? _EmptyState(
                       hasAccounts: accountList.isNotEmpty,
@@ -141,27 +142,40 @@ class UnifiedInboxScreen extends ConsumerWidget {
                           indent: 72,
                         ),
                         itemBuilder: (context, index) {
-                          final email = list[index];
-                          final isSelected = selection.contains(email.id);
+                          final thread = list[index];
+                          final isSelected = thread.emailIds
+                              .any(selection.contains);
 
+                          // La sélection opère sur le fil entier : tous
+                          // ses messages entrent/sortent ensemble.
                           void toggleSelection() {
                             final ids = {...selection};
                             isSelected
-                                ? ids.remove(email.id)
-                                : ids.add(email.id);
+                                ? ids.removeAll(thread.emailIds)
+                                : ids.addAll(thread.emailIds);
                             ref
                                 .read(inboxSelectionProvider.notifier)
                                 .state = ids;
                           }
 
                           return EmailTile(
-                            email: email,
+                            email: thread.latest,
+                            threadCount: thread.count,
                             selected: isSelected,
                             selectionMode: selectionMode,
                             onLongPress: toggleSelection,
                             onTap: selectionMode
                                 ? toggleSelection
-                                : () => context.push('/email/${email.id}'),
+                                : () => context.push(
+                                      thread.isThread
+                                          ? Uri(
+                                              path: '/thread',
+                                              queryParameters: {
+                                                'id': thread.threadKey,
+                                              },
+                                            ).toString()
+                                          : '/email/${thread.latest.id}',
+                                    ),
                           );
                         },
                       ),

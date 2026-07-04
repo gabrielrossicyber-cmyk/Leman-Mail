@@ -412,6 +412,26 @@ class SyncCoordinator {
     return false;
   }
 
+  /// Identifiant de fil de conversation.
+  ///
+  /// Gmail (`threadId`) et Graph (`conversationId`) le fournissent ; en
+  /// IMAP on le dérive du standard RFC 5322 : la racine du fil est le
+  /// premier Message-ID de `References`, sinon `In-Reply-To`, sinon le
+  /// message lui-même (début de fil).
+  static String _threadIdOf(RawEmail raw) {
+    if (raw.threadId != null && raw.threadId!.isNotEmpty) {
+      return raw.threadId!;
+    }
+    for (final header in const ['references', 'in-reply-to']) {
+      final value = raw.headers[header];
+      if (value != null) {
+        final root = RegExp('<[^>]+>').firstMatch(value)?.group(0);
+        if (root != null) return root;
+      }
+    }
+    return raw.messageId;
+  }
+
   Future<void> _ingest(
     domain.Account account,
     int folderId,
@@ -448,7 +468,7 @@ class SyncCoordinator {
         folderId: folderId,
         uid: raw.uid,
         messageId: raw.messageId,
-        threadId: Value(raw.threadId),
+        threadId: Value(_threadIdOf(raw)),
         subject: Value(raw.subject),
         fromName: Value(raw.fromName),
         fromAddress: raw.fromAddress.toLowerCase(),

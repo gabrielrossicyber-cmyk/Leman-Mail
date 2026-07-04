@@ -47,6 +47,12 @@ class EmailRepositoryImpl implements EmailRepository {
   }
 
   @override
+  Stream<List<domain.EmailMessage>> watchThread(String threadId) => _db
+      .emailsDao
+      .watchThread(threadId)
+      .map((rows) => rows.map(_toEntity).toList());
+
+  @override
   Future<String?> loadBody(int emailId) async {
     final row = await _db.emailsDao.getById(emailId);
     final encrypted = row?.bodyEncrypted;

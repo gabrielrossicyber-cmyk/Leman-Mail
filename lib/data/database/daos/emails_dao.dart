@@ -59,6 +59,12 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
   Future<Email?> getById(int id) =>
       (select(emails)..where((e) => e.id.equals(id))).getSingleOrNull();
 
+  /// Messages d'un fil de conversation, du plus ancien au plus récent.
+  Stream<List<Email>> watchThread(String threadId) => (select(emails)
+        ..where((e) => e.threadId.equals(threadId))
+        ..orderBy([(e) => OrderingTerm.asc(e.date)]))
+      .watch();
+
   Future<int> upsert(EmailsCompanion email) =>
       into(emails).insertOnConflictUpdate(email);
 

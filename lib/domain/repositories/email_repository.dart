@@ -16,6 +16,9 @@ abstract interface class EmailRepository {
   /// Recherche plein texte locale (sujet, expéditeur, aperçu).
   Future<List<EmailMessage>> search(String query, {int limit});
 
+  /// Messages d'un fil de conversation, du plus ancien au plus récent.
+  Stream<List<EmailMessage>> watchThread(String threadId);
+
   /// Decrypts and returns the full body of one message.
   Future<String?> loadBody(int emailId);
 

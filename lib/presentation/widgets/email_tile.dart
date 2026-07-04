@@ -14,6 +14,7 @@ class EmailTile extends StatelessWidget {
     this.onLongPress,
     this.selected = false,
     this.selectionMode = false,
+    this.threadCount = 1,
   });
 
   final EmailMessage email;
@@ -21,6 +22,9 @@ class EmailTile extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool selected;
   final bool selectionMode;
+
+  /// Nombre de messages du fil (>1 affiche la pastille de conversation).
+  final int threadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +68,20 @@ class EmailTile extends StatelessWidget {
               style: TextStyle(fontWeight: weight),
             ),
           ),
+          if (threadCount > 1)
+            Container(
+              margin: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: theme.colorScheme.outline),
+              ),
+              child: Text(
+                '$threadCount',
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
           if (email.isFlagged)
             Padding(
               padding: const EdgeInsets.only(right: 4),
