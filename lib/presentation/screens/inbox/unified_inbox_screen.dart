@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_constants.dart';
@@ -314,12 +315,15 @@ class _MailDrawer extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(
-                        Icons.shield_outlined,
-                        color: theme.colorScheme.primary,
-                        size: 28,
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SvgPicture.asset(
+                          'assets/branding/logo.svg',
+                          width: 36,
+                          height: 36,
+                        ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       Text(
                         AppConstants.appName,
                         style: theme.textTheme.titleLarge

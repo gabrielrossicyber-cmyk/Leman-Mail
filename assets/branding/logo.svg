@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!--
+    Leman Mail — logo officiel.
+    Charte Leman Cyber Security : crème #f5efe7, encre #201914,
+    bordeaux #551112, carmin #a5292b.
+    Motif : enveloppe à trait encre, scellée du losange facetté rouge
+    (écho au losange du site) posé comme un sceau de cire.
+  -->
+  <defs>
+    <clipPath id="rounded">
+      <rect width="1024" height="1024" rx="224"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#rounded)">
+    <!-- Fond crème -->
+    <rect width="1024" height="1024" fill="#f5efe7"/>
+
+    <!-- Enveloppe -->
+    <g fill="none" stroke="#201914" stroke-width="34" stroke-linejoin="round">
+      <rect x="196" y="312" width="632" height="424" rx="36"/>
+      <!-- Rabat : V depuis les coins supérieurs vers le sceau -->
+      <path d="M 214 342 L 512 566 L 810 342"/>
+    </g>
+
+    <!-- Sceau losange facetté (bordeaux / carmin) -->
+    <g>
+      <path d="M 512 448 L 620 566 L 512 684 L 404 566 Z" fill="#a5292b"/>
+      <!-- Facette gauche plus sombre -->
+      <path d="M 512 448 L 404 566 L 512 684 Z" fill="#551112"/>
+      <!-- Arête de lumière -->
+      <path d="M 512 448 L 512 684" stroke="#f5efe7" stroke-width="8" opacity="0.35"/>
+    </g>
+  </g>
+</svg>

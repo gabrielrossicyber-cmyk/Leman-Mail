@@ -123,65 +123,10 @@ class _EmailDetailView extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // --- Compact header --------------------------------------------------
+        // --- Expandable header -----------------------------------------------
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                email.subject.isEmpty ? '(sans objet)' : email.subject,
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: theme.colorScheme.primaryContainer,
-                    child: Text(
-                      (email.fromName.isNotEmpty
-                              ? email.fromName
-                              : email.fromAddress)
-                          .substring(0, 1)
-                          .toUpperCase(),
-                      style: TextStyle(
-                        color: theme.colorScheme.onPrimaryContainer,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          email.fromName.isNotEmpty
-                              ? email.fromName
-                              : email.fromAddress,
-                          style: theme.textTheme.bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          '${email.fromAddress} · '
-                          '${DateFormat('d MMM y, HH:mm', 'fr').format(email.date)}',
-                          style: theme.textTheme.bodySmall,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _SecurityDot(email: email),
-                ],
-              ),
-            ],
-          ),
+          child: _ExpandableHeader(email: email),
         ),
         // --- Warning banners --------------------------------------------------
         if (email.phishingLevel == RiskLevel.high)
@@ -254,6 +199,173 @@ class _EmailDetailView extends ConsumerWidget {
                     ),
         ),
       ],
+    );
+  }
+}
+
+/// En-tête du message : compact par défaut, un tap sur le bandeau déplie
+/// les informations complètes — destinataires (À), Cc et date détaillée.
+class _ExpandableHeader extends StatefulWidget {
+  const _ExpandableHeader({required this.email});
+
+  final EmailMessage email;
+
+  @override
+  State<_ExpandableHeader> createState() => _ExpandableHeaderState();
+}
+
+class _ExpandableHeaderState extends State<_ExpandableHeader> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final email = widget.email;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          email.subject.isEmpty ? '(sans objet)' : email.subject,
+          style: theme.textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  child: Text(
+                    (email.fromName.isNotEmpty
+                            ? email.fromName
+                            : email.fromAddress)
+                        .substring(0, 1)
+                        .toUpperCase(),
+                    style: TextStyle(
+                      color: theme.colorScheme.onPrimaryContainer,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        email.fromName.isNotEmpty
+                            ? email.fromName
+                            : email.fromAddress,
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        '${email.fromAddress} · '
+                        '${DateFormat('d MMM y, HH:mm', 'fr').format(email.date)}',
+                        style: theme.textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                  color: theme.colorScheme.outline,
+                ),
+                const SizedBox(width: 4),
+                _SecurityDot(email: email),
+              ],
+            ),
+          ),
+        ),
+        // --- Détails dépliés : À, Cc, date complète ------------------------
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 200),
+          crossFadeState: _expanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          firstChild: const SizedBox(width: double.infinity),
+          secondChild: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _HeaderDetailRow(label: 'De', value: email.fromAddress),
+                if (email.toAddresses.isNotEmpty)
+                  _HeaderDetailRow(
+                    label: 'À',
+                    value: email.toAddresses.join(', '),
+                  ),
+                if (email.ccAddresses.isNotEmpty)
+                  _HeaderDetailRow(
+                    label: 'Cc',
+                    value: email.ccAddresses.join(', '),
+                  ),
+                _HeaderDetailRow(
+                  label: 'Date',
+                  value: DateFormat('EEEE d MMMM y, HH:mm', 'fr')
+                      .format(email.date),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeaderDetailRow extends StatelessWidget {
+  const _HeaderDetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 44,
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.secondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SelectableText(
+              value,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

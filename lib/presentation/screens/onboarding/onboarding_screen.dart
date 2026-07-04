@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_constants.dart';
@@ -50,6 +51,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         child: Column(
           children: [
             const SizedBox(height: 32),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: SvgPicture.asset(
+                'assets/branding/logo.svg',
+                width: 88,
+                height: 88,
+              ),
+            ),
+            const SizedBox(height: 12),
             Text(
               AppConstants.appName,
               style: theme.textTheme.headlineMedium
