@@ -7,6 +7,7 @@ import '../../core/error/failures.dart';
 import '../../core/security/crypto_service.dart';
 import '../../core/utils/email_utils.dart';
 import '../../domain/entities/account.dart' as domain;
+import '../../domain/entities/email_message.dart' show RiskLevel;
 import '../../domain/repositories/account_repository.dart';
 import '../../domain/usecases/analyze_incoming_email.dart';
 import '../database/app_database.dart';
@@ -16,6 +17,74 @@ import '../services/gmail/gmail_api_service.dart';
 import '../services/graph/microsoft_graph_service.dart';
 import '../services/mail/imap_service.dart';
 import '../services/mail/mail_sync_service.dart';
+
+/// Aperçu d'un email fraîchement synchronisé, pour les notifications.
+class NewEmailSummary {
+  const NewEmailSummary({
+    required this.subject,
+    required this.fromAddress,
+    required this.fromName,
+  });
+
+  final String subject;
+  final String fromAddress;
+  final String fromName;
+}
+
+/// Résultat d'une passe de synchronisation complète.
+class SyncReport {
+  const SyncReport({
+    required this.newEmailCount,
+    required this.highlights,
+    required this.threats,
+    required this.failures,
+  });
+
+  static const empty = SyncReport(
+    newEmailCount: 0,
+    highlights: [],
+    threats: [],
+    failures: {},
+  );
+
+  final int newEmailCount;
+
+  /// Premiers nouveaux emails non lus (aperçu de notification).
+  final List<NewEmailSummary> highlights;
+
+  /// Emails classés 🔴 risque élevé — alerte sécurité dédiée.
+  final List<NewEmailSummary> threats;
+
+  /// Comptes en échec (email → message d'erreur lisible).
+  final Map<String, String> failures;
+
+  String? get failureSummary => failures.isEmpty
+      ? null
+      : failures.entries.map((e) => '${e.key} : ${e.value}').join('\n');
+}
+
+class _SyncCollector {
+  int count = 0;
+  final List<NewEmailSummary> highlights = [];
+  final List<NewEmailSummary> threats = [];
+
+  void record({
+    required String subject,
+    required String fromAddress,
+    required String fromName,
+    required bool isThreat,
+    required bool isUnread,
+  }) {
+    count++;
+    final summary = NewEmailSummary(
+      subject: subject,
+      fromAddress: fromAddress,
+      fromName: fromName,
+    );
+    if (isThreat) threats.add(summary);
+    if (isUnread && highlights.length < 3) highlights.add(summary);
+  }
+}
 
 /// Orchestrates a full synchronization pass:
 /// account → backend service → fetch new messages → analysis pipeline →
@@ -54,31 +123,34 @@ class SyncCoordinator {
   /// Synchronizes every enabled account. Returns the number of new emails.
   ///
   /// One broken account (wrong password, unreachable Proton Bridge…) must
-  /// not prevent the others from syncing: failures are collected per
-  /// account and reported once at the end.
-  Future<int> syncAllAccounts() async {
-    var newEmails = 0;
-    final failures = <String, Object>{};
+  /// not prevent the others from syncing: failures are collected in the
+  /// report rather than thrown, so callers (UI snackbar, background
+  /// notifications) each decide how to surface them.
+  Future<SyncReport> syncAllAccounts() async {
+    final collector = _SyncCollector();
+    final failures = <String, String>{};
     for (final account in await _accounts.enabledAccounts()) {
       try {
-        newEmails += await syncAccount(account);
+        await _syncAccount(account, collector);
       } on Object catch (error) {
-        failures[account.email] = error;
+        failures[account.email] = _describe(error);
       }
     }
-    if (failures.isNotEmpty) {
-      final details = failures.entries
-          .map((e) => '${e.key} : ${_describe(e.value)}')
-          .join('\n');
+    if (failures.isNotEmpty && collector.count == 0) {
       throw MailProtocolFailure(
-        newEmails > 0
-            ? '$newEmails nouveaux emails, mais certains comptes ont '
-                'échoué :\n$details'
-            : 'Synchronisation impossible :\n$details',
+        'Synchronisation impossible :\n${_formatFailures(failures)}',
       );
     }
-    return newEmails;
+    return SyncReport(
+      newEmailCount: collector.count,
+      highlights: collector.highlights,
+      threats: collector.threats,
+      failures: failures,
+    );
   }
+
+  static String _formatFailures(Map<String, String> failures) =>
+      failures.entries.map((e) => '${e.key} : ${e.value}').join('\n');
 
   static String _describe(Object error) =>
       error is Failure ? error.message : error.toString();
@@ -111,9 +183,12 @@ class SyncCoordinator {
     return count;
   }
 
-  Future<int> syncAccount(domain.Account account) async {
+  Future<void> _syncAccount(
+    domain.Account account, [
+    _SyncCollector? collector,
+  ]) async {
     final secret = await _resolveSecret(account);
-    if (secret == null) return 0;
+    if (secret == null) return;
 
     final service = _serviceFactory(account);
     await service.connect(account, secret: secret);
@@ -129,20 +204,23 @@ class SyncCoordinator {
       final blocked = await _db.emailsDao.allBlockedSenders();
 
       const syncedTypes = {'inbox', 'spam', 'sent', 'archive'};
-      var total = 0;
       for (final folder in await service.listFolders()) {
         if (!syncedTypes.contains(folder.type)) continue;
-        total += await _syncFolder(
+        await _syncFolder(
           account,
           service,
           folder,
           knownSenders: knownSenders,
           contactDomains: contactDomains,
           blockedPatterns: blocked.map((b) => b.pattern).toList(),
+          // Seuls les nouveaux messages de la boîte de réception (et spam)
+          // méritent une notification — pas nos propres envoyés.
+          collector: folder.type == 'inbox' || folder.type == 'spam'
+              ? collector
+              : null,
         );
       }
       await _db.accountsDao.updateLastSync(account.id, DateTime.now());
-      return total;
     } finally {
       await service.disconnect();
     }
@@ -183,6 +261,7 @@ class SyncCoordinator {
     required Set<String> knownSenders,
     required Set<String> contactDomains,
     required List<String> blockedPatterns,
+    _SyncCollector? collector,
   }) async {
     final folderId = await _db.accountsDao.upsertFolder(
       FoldersCompanion.insert(
@@ -213,7 +292,14 @@ class SyncCoordinator {
     for (final raw in messages) {
       if (raw.uid > maxUid) maxUid = raw.uid;
       if (_isBlocked(raw.fromAddress, blockedPatterns)) continue;
-      await _ingest(account, folderId, raw, knownSenders, contactDomains);
+      await _ingest(
+        account,
+        folderId,
+        raw,
+        knownSenders,
+        contactDomains,
+        collector: collector,
+      );
     }
 
     await _db.into(_db.syncStates).insert(
@@ -245,12 +331,21 @@ class SyncCoordinator {
     int folderId,
     RawEmail raw,
     Set<String> knownSenders,
-    Set<String> contactDomains,
-  ) async {
+    Set<String> contactDomains, {
+    _SyncCollector? collector,
+  }) async {
     final outcome = _analyze(
       raw,
       knownSenderAddresses: knownSenders,
       userContactDomains: contactDomains,
+    );
+
+    collector?.record(
+      subject: raw.subject,
+      fromAddress: raw.fromAddress,
+      fromName: raw.fromName,
+      isThreat: outcome.phishing.level == RiskLevel.high,
+      isUnread: !raw.isRead,
     );
 
     final body = raw.bodyHtml ?? raw.bodyPlain ?? '';

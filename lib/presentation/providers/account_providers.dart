@@ -1,8 +1,12 @@
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/error/failures.dart';
 import '../../data/services/mail/imap_service.dart';
 import '../../data/services/mail/provider_presets.dart';
+import '../../data/services/notifications/imap_idle_service.dart';
+import '../../data/sync/sync_coordinator.dart';
 import '../../domain/entities/account.dart';
 import '../../domain/repositories/account_repository.dart';
 import 'core_providers.dart';
@@ -95,14 +99,60 @@ class SyncController extends AsyncNotifier<int> {
   Future<void> syncNow() async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final count =
+      final report =
           await ref.read(syncCoordinatorProvider).syncAllAccounts();
       // Refresh the health score after every sync.
       await ref.read(computeInboxHealthProvider).call();
-      return count;
+      await _notify(report);
+
+      // Comptes en échec : remontés comme erreur pour la snackbar,
+      // les comptes sains ayant déjà été synchronisés et notifiés.
+      final failureSummary = report.failureSummary;
+      if (failureSummary != null) {
+        throw MailProtocolFailure(
+          report.newEmailCount > 0
+              ? '${report.newEmailCount} nouveaux emails, mais certains '
+                  'comptes ont échoué :\n$failureSummary'
+              : failureSummary,
+        );
+      }
+      return report.newEmailCount;
     });
+  }
+
+  /// Notifie à l'écran quand l'app n'est pas visible (au premier plan la
+  /// snackbar suffit). Les menaces sont toujours notifiées : c'est l'ADN
+  /// sécurité du produit.
+  Future<void> _notify(SyncReport report) async {
+    final lifecycle = ref.read(appLifecycleProvider);
+    final notifications = ref.read(notificationServiceProvider);
+    final appVisible = lifecycle == AppLifecycleState.resumed;
+
+    if (!appVisible && report.newEmailCount > 0) {
+      final first =
+          report.highlights.isNotEmpty ? report.highlights.first : null;
+      await notifications.showNewEmails(
+        report.newEmailCount,
+        preview: first == null
+            ? null
+            : '${first.fromName.isNotEmpty ? first.fromName : first.fromAddress} — ${first.subject}',
+      );
+    }
+    for (final threat in report.threats) {
+      await notifications.showThreat(threat.subject, threat.fromAddress);
+    }
   }
 }
 
 final syncControllerProvider =
     AsyncNotifierProvider<SyncController, int>(SyncController.new);
+
+/// IMAP IDLE : notification instantanée du serveur tant que l'app est au
+/// premier plan — démarré/arrêté par [LemanMailApp] selon le cycle de vie.
+final imapIdleServiceProvider = Provider<ImapIdleService>((ref) {
+  final service = ImapIdleService(
+    onNewMail: () => ref.read(syncControllerProvider.notifier).syncNow(),
+  );
+  ref.onDispose(service.stop);
+  return service;
+});

@@ -4,14 +4,65 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/constants/app_constants.dart';
 import 'core/theme/app_theme.dart';
+import 'presentation/providers/account_providers.dart';
+import 'presentation/providers/core_providers.dart';
 import 'presentation/router/app_router.dart';
 
-class LemanMailApp extends ConsumerWidget {
+class LemanMailApp extends ConsumerStatefulWidget {
   const LemanMailApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LemanMailApp> createState() => _LemanMailAppState();
+}
+
+class _LemanMailAppState extends ConsumerState<LemanMailApp> {
+  late final AppLifecycleListener _lifecycleListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycleListener = AppLifecycleListener(
+      onStateChange: (state) {
+        ref.read(appLifecycleProvider.notifier).state = state;
+        // IDLE vit au premier plan uniquement : l'OS coupe les sockets en
+        // arrière-plan, où la synchro périodique WorkManager prend le relais.
+        if (state == AppLifecycleState.resumed) {
+          _startIdle();
+        } else if (state == AppLifecycleState.paused) {
+          ref.read(imapIdleServiceProvider).stop();
+        }
+      },
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startIdle());
+  }
+
+  Future<void> _startIdle() async {
+    final accounts =
+        await ref.read(accountRepositoryProvider).enabledAccounts();
+    if (!mounted || accounts.isEmpty) return;
+    await ref.read(imapIdleServiceProvider).start(
+          accounts,
+          ref.read(accountRepositoryProvider).credentialsOf,
+        );
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+
+    // Nouveau compte ajouté / supprimé → redémarre les écouteurs IDLE.
+    ref.listen(accountsProvider, (previous, next) {
+      if (previous?.valueOrNull?.length != next.valueOrNull?.length) {
+        _startIdle();
+      }
+    });
+
     return MaterialApp.router(
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,

@@ -27,6 +27,26 @@ Configuration native requise ensuite :
 - Capabilities : Keychain Sharing (non requis en mono-app), Push Notifications,
   Background fetch (`fetch`, `remote-notification`).
 - `NSFaceIDUsageDescription` dans Info.plist.
+- **Synchro arrière-plan (workmanager/BGTaskScheduler)** — dans Info.plist :
+  ```xml
+  <key>BGTaskSchedulerPermittedIdentifiers</key>
+  <array>
+    <string>com.lemancybersecurity.lemanmail.sync</string>
+  </array>
+  <key>UIBackgroundModes</key>
+  <array>
+    <string>fetch</string>
+    <string>processing</string>
+  </array>
+  ```
+  et dans `AppDelegate.swift`, enregistrer la tâche au lancement :
+  ```swift
+  WorkmanagerPlugin.registerBGProcessingTask(
+    withIdentifier: "com.lemancybersecurity.lemanmail.sync")
+  ```
+  iOS déclenche ces fenêtres à sa discrétion (best effort) — les push
+  serveur FCM/APNs (backend SaaS, roadmap T3) restent la solution temps
+  réel définitive.
 - URL scheme de redirection OAuth identique à Android.
 - Signature via App Store Connect API key en CI (`fastlane` ou `xcodebuild`).
 

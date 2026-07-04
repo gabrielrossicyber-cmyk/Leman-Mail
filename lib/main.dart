@@ -4,6 +4,8 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'app.dart';
 import 'core/security/secure_storage_service.dart';
+import 'data/background/background_sync.dart';
+import 'data/services/notifications/notification_service.dart';
 import 'presentation/providers/core_providers.dart';
 
 Future<void> main() async {
@@ -15,11 +17,18 @@ Future<void> main() async {
   final secureStorage = SecureStorageService();
   final masterKey = await secureStorage.obtainMasterKey();
 
+  // Notifications locales (canaux + permission) et synchro périodique
+  // en arrière-plan.
+  final notifications = NotificationService();
+  await notifications.init();
+  await scheduleBackgroundSync();
+
   runApp(
     ProviderScope(
       overrides: [
         masterKeyProvider.overrideWithValue(masterKey),
         secureStorageProvider.overrideWithValue(secureStorage),
+        notificationServiceProvider.overrideWithValue(notifications),
       ],
       child: const LemanMailApp(),
     ),
