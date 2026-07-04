@@ -28,6 +28,8 @@ class _LemanMailAppState extends ConsumerState<LemanMailApp> {
         // arrière-plan, où la synchro périodique WorkManager prend le relais.
         if (state == AppLifecycleState.resumed) {
           _startIdle();
+          // Rattrape ce qui est arrivé pendant l'arrière-plan.
+          ref.read(syncControllerProvider.notifier).syncNow();
         } else if (state == AppLifecycleState.paused) {
           ref.read(imapIdleServiceProvider).stop();
         }
