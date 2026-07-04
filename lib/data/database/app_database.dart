@@ -188,6 +188,27 @@ class Badges extends Table {
   DateTimeColumn get unlockedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Action locale en attente de répercussion sur le serveur mail.
+enum PendingOpType { markRead, markUnread, flag, unflag, delete }
+
+/// File d'opérations : chaque action utilisateur (lu, favori, suppression)
+/// est enregistrée ici puis rejouée vers le serveur (IMAP `\Seen`,
+/// `\Flagged`, expunge / API Gmail-Graph) à la prochaine synchronisation —
+/// y compris après un passage hors-ligne ou un redémarrage.
+class PendingOperations extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get accountId =>
+      integer().references(Accounts, #id, onDelete: KeyAction.cascade)();
+  IntColumn get folderId =>
+      integer().references(Folders, #id, onDelete: KeyAction.cascade)();
+
+  /// UID du message sur le serveur (survit à la suppression locale).
+  IntColumn get uid => integer()();
+  TextColumn get operation => textEnum<PendingOpType>()();
+  IntColumn get attempts => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 class SyncStates extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get accountId =>
@@ -224,6 +245,7 @@ class SyncStates extends Table {
     SecurityRecommendations,
     Badges,
     SyncStates,
+    PendingOperations,
   ],
   daos: [AccountsDao, EmailsDao, NewslettersDao, HealthDao],
 )
@@ -234,7 +256,29 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  /// Recherche plein texte (FTS5, table à contenu externe) synchronisée
+  /// avec `emails` par triggers — couvre sujet, expéditeur et aperçu.
+  static const _ftsStatements = [
+    'CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts USING fts5('
+        'subject, from_name, from_address, snippet, '
+        "content='emails', content_rowid='id')",
+    'CREATE TRIGGER IF NOT EXISTS emails_fts_ai AFTER INSERT ON emails BEGIN '
+        'INSERT INTO emails_fts(rowid, subject, from_name, from_address, snippet) '
+        'VALUES (new.id, new.subject, new.from_name, new.from_address, new.snippet); '
+        'END',
+    'CREATE TRIGGER IF NOT EXISTS emails_fts_ad AFTER DELETE ON emails BEGIN '
+        "INSERT INTO emails_fts(emails_fts, rowid, subject, from_name, from_address, snippet) "
+        "VALUES ('delete', old.id, old.subject, old.from_name, old.from_address, old.snippet); "
+        'END',
+    'CREATE TRIGGER IF NOT EXISTS emails_fts_au AFTER UPDATE ON emails BEGIN '
+        "INSERT INTO emails_fts(emails_fts, rowid, subject, from_name, from_address, snippet) "
+        "VALUES ('delete', old.id, old.subject, old.from_name, old.from_address, old.snippet); "
+        'INSERT INTO emails_fts(rowid, subject, from_name, from_address, snippet) '
+        'VALUES (new.id, new.subject, new.from_name, new.from_address, new.snippet); '
+        'END',
+  ];
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -249,6 +293,22 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             'CREATE INDEX idx_emails_flags ON emails (is_read, is_newsletter, phishing_level)',
           );
+          for (final statement in _ftsStatements) {
+            await customStatement(statement);
+          }
+        },
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.createTable(pendingOperations);
+            for (final statement in _ftsStatements) {
+              await customStatement(statement);
+            }
+            // Indexe le contenu déjà présent.
+            await customStatement(
+              'INSERT INTO emails_fts(rowid, subject, from_name, from_address, snippet) '
+              'SELECT id, subject, from_name, from_address, snippet FROM emails',
+            );
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');

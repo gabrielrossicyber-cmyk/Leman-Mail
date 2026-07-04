@@ -77,6 +77,11 @@ class UnifiedInboxScreen extends ConsumerWidget {
                 ],
               ),
               actions: [
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  tooltip: 'Rechercher',
+                  onPressed: () => context.push('/search'),
+                ),
                 if (sync.isLoading)
                   const Padding(
                     padding: EdgeInsets.all(14),

@@ -8,7 +8,9 @@ part 'emails_dao.g.dart';
 /// Filters available in the unified inbox.
 enum InboxFilter { all, unread, attachments, favorites, priority, suspicious }
 
-@DriftAccessor(tables: [Emails, Attachments, BlockedSenders, Folders])
+@DriftAccessor(
+  tables: [Emails, Attachments, BlockedSenders, Folders, PendingOperations],
+)
 class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
   EmailsDao(super.db);
 
@@ -60,16 +62,84 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
   Future<int> upsert(EmailsCompanion email) =>
       into(emails).insertOnConflictUpdate(email);
 
+  Future<List<Email>> getByIds(List<int> ids) =>
+      (select(emails)..where((e) => e.id.isIn(ids))).get();
+
+  /// Chaque action locale enfile son opération serveur : c'est ici, au
+  /// niveau du DAO, pour que TOUS les chemins (boîte, lecture, Newsletter
+  /// Cleaner, Smart Cleanup) soient répercutés sans y penser.
+  Future<void> _enqueueOps(List<int> emailIds, PendingOpType op) async {
+    final rows = await getByIds(emailIds);
+    if (rows.isEmpty) return;
+    await batch(
+      (b) => b.insertAll(pendingOperations, [
+        for (final row in rows)
+          PendingOperationsCompanion.insert(
+            accountId: row.accountId,
+            folderId: row.folderId,
+            uid: row.uid,
+            operation: op,
+          ),
+      ]),
+    );
+  }
+
   Future<void> markRead(List<int> ids, {bool read = true}) =>
-      (update(emails)..where((e) => e.id.isIn(ids)))
-          .write(EmailsCompanion(isRead: Value(read)));
+      transaction(() async {
+        await _enqueueOps(
+          ids,
+          read ? PendingOpType.markRead : PendingOpType.markUnread,
+        );
+        await (update(emails)..where((e) => e.id.isIn(ids)))
+            .write(EmailsCompanion(isRead: Value(read)));
+      });
 
   Future<void> setFlagged(List<int> ids, {required bool flagged}) =>
-      (update(emails)..where((e) => e.id.isIn(ids)))
-          .write(EmailsCompanion(isFlagged: Value(flagged)));
+      transaction(() async {
+        await _enqueueOps(
+          ids,
+          flagged ? PendingOpType.flag : PendingOpType.unflag,
+        );
+        await (update(emails)..where((e) => e.id.isIn(ids)))
+            .write(EmailsCompanion(isFlagged: Value(flagged)));
+      });
 
-  Future<void> deleteByIds(List<int> ids) =>
-      (delete(emails)..where((e) => e.id.isIn(ids))).go();
+  Future<void> deleteByIds(List<int> ids) => transaction(() async {
+        // Enfilé AVANT la suppression locale : le UID serveur est encore là.
+        await _enqueueOps(ids, PendingOpType.delete);
+        await (delete(emails)..where((e) => e.id.isIn(ids))).go();
+      });
+
+  // ---- Recherche plein texte (FTS5) ----------------------------------------
+
+  /// Construit la requête MATCH : termes entre guillemets + préfixe, pour
+  /// que « factur digi » trouve « Facture Digitec » sans exposer la
+  /// syntaxe FTS aux entrées utilisateur.
+  static String buildMatchQuery(String input) {
+    final terms = input
+        .replaceAll(RegExp(r'''["'\*\(\)\^:]'''), ' ')
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty);
+    return terms.map((t) => '"$t"*').join(' ');
+  }
+
+  Future<List<Email>> search(String query, {int limit = 50}) async {
+    final match = buildMatchQuery(query);
+    if (match.isEmpty) return const [];
+    final idRows = await customSelect(
+      'SELECT rowid FROM emails_fts WHERE emails_fts MATCH ?1 '
+      'ORDER BY rank LIMIT ?2',
+      variables: [Variable.withString(match), Variable.withInt(limit)],
+      readsFrom: {emails},
+    ).get();
+    final ids = [for (final row in idRows) row.read<int>('rowid')];
+    if (ids.isEmpty) return const [];
+
+    final rows = await getByIds(ids);
+    final rankOf = {for (final (i, id) in ids.indexed) id: i};
+    rows.sort((a, b) => rankOf[a.id]!.compareTo(rankOf[b.id]!));
+    return rows;
+  }
 
   Future<List<Attachment>> attachmentsOf(int emailId) =>
       (select(attachments)..where((a) => a.emailId.equals(emailId))).get();

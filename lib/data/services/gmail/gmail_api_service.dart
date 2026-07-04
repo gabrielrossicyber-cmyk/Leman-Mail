@@ -229,6 +229,18 @@ class GmailApiService implements MailSyncService {
       );
 
   @override
+  Future<void> setFlagged(
+    RemoteFolder folder,
+    List<int> uids, {
+    required bool flagged,
+  }) =>
+      _modifyLabels(
+        uids,
+        add: flagged ? const ['STARRED'] : const [],
+        remove: flagged ? const [] : const ['STARRED'],
+      );
+
+  @override
   Future<void> deleteMessages(RemoteFolder folder, List<int> uids) =>
       _modifyLabels(uids, add: const ['TRASH'], remove: const ['INBOX']);
 

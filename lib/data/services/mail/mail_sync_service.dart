@@ -84,6 +84,11 @@ abstract interface class MailSyncService {
   });
 
   Future<void> markRead(RemoteFolder folder, List<int> uids, {bool read = true});
+  Future<void> setFlagged(
+    RemoteFolder folder,
+    List<int> uids, {
+    required bool flagged,
+  });
   Future<void> deleteMessages(RemoteFolder folder, List<int> uids);
   Future<void> moveToFolder(
     RemoteFolder from,

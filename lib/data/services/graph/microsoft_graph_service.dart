@@ -197,6 +197,19 @@ class MicrosoftGraphService implements MailSyncService {
   }
 
   @override
+  Future<void> setFlagged(
+    RemoteFolder folder,
+    List<int> uids, {
+    required bool flagged,
+  }) async {
+    for (final uid in uids) {
+      await _patch(uid.toString(), {
+        'flag': {'flagStatus': flagged ? 'flagged' : 'notFlagged'},
+      });
+    }
+  }
+
+  @override
   Future<void> deleteMessages(RemoteFolder folder, List<int> uids) async {
     for (final uid in uids) {
       final response = await _http.post(

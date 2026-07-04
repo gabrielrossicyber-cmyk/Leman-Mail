@@ -41,6 +41,12 @@ class EmailRepositoryImpl implements EmailRepository {
   }
 
   @override
+  Future<List<domain.EmailMessage>> search(String query, {int limit = 50}) async {
+    final rows = await _db.emailsDao.search(query, limit: limit);
+    return rows.map(_toEntity).toList();
+  }
+
+  @override
   Future<String?> loadBody(int emailId) async {
     final row = await _db.emailsDao.getById(emailId);
     final encrypted = row?.bodyEncrypted;

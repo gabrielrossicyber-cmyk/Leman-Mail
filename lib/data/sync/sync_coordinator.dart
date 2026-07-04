@@ -193,6 +193,10 @@ class SyncCoordinator {
     final service = _serviceFactory(account);
     await service.connect(account, secret: secret);
     try {
+      // Répercute d'abord les actions locales en attente (lu, favori,
+      // suppression) — y compris celles accumulées hors-ligne.
+      await _replayPendingOperations(account, service);
+
       final knownSenders = (await _db.emailsDao.knownSenderAddresses())
           .map((a) => a.toLowerCase())
           .toSet();
@@ -223,6 +227,88 @@ class SyncCoordinator {
       await _db.accountsDao.updateLastSync(account.id, DateTime.now());
     } finally {
       await service.disconnect();
+    }
+  }
+
+  /// Rejoue la file `pending_operations` du compte vers le serveur,
+  /// groupée par (dossier, opération) pour minimiser les allers-retours.
+  /// Une opération qui échoue reste en file (10 tentatives max — au-delà
+  /// elle est abandonnée pour ne pas empoisonner les synchronisations).
+  static const _maxOpAttempts = 10;
+
+  Future<void> _replayPendingOperations(
+    domain.Account account,
+    MailSyncService service,
+  ) async {
+    final ops = await (_db.select(_db.pendingOperations)
+          ..where((o) => o.accountId.equals(account.id))
+          ..orderBy([(o) => OrderingTerm.asc(o.id)]))
+        .get();
+    if (ops.isEmpty) return;
+
+    final folders = {
+      for (final folder in await _db.accountsDao.foldersOf(account.id))
+        folder.id: folder,
+    };
+
+    final groups = <(int, PendingOpType), List<PendingOperation>>{};
+    for (final op in ops) {
+      groups.putIfAbsent((op.folderId, op.operation), () => []).add(op);
+    }
+
+    for (final entry in groups.entries) {
+      final (folderId, operation) = entry.key;
+      final group = entry.value;
+      final ids = group.map((o) => o.id).toList();
+      final folder = folders[folderId];
+      if (folder == null) {
+        // Dossier disparu : opérations caduques.
+        await (_db.delete(_db.pendingOperations)
+              ..where((o) => o.id.isIn(ids)))
+            .go();
+        continue;
+      }
+      final remote = RemoteFolder(
+        path: folder.path,
+        name: folder.name,
+        type: folder.type,
+      );
+      final uids = group.map((o) => o.uid).toList();
+
+      try {
+        switch (operation) {
+          case PendingOpType.markRead:
+            await service.markRead(remote, uids);
+          case PendingOpType.markUnread:
+            await service.markRead(remote, uids, read: false);
+          case PendingOpType.flag:
+            await service.setFlagged(remote, uids, flagged: true);
+          case PendingOpType.unflag:
+            await service.setFlagged(remote, uids, flagged: false);
+          case PendingOpType.delete:
+            await service.deleteMessages(remote, uids);
+        }
+        await (_db.delete(_db.pendingOperations)
+              ..where((o) => o.id.isIn(ids)))
+            .go();
+      } on Object {
+        // Échec (réseau, dossier verrouillé…) : on incrémente et on
+        // abandonne les opérations trop retentées.
+        await (_db.update(_db.pendingOperations)
+              ..where((o) => o.id.isIn(ids)))
+            .write(
+          PendingOperationsCompanion(
+            attempts: Value(group.first.attempts + 1),
+          ),
+        );
+        await (_db.delete(_db.pendingOperations)
+              ..where(
+                (o) =>
+                    o.id.isIn(ids) &
+                    o.attempts.isBiggerOrEqualValue(_maxOpAttempts),
+              ))
+            .go();
+      }
     }
   }
 

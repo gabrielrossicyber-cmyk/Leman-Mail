@@ -203,6 +203,22 @@ class ImapService implements MailSyncService {
   }
 
   @override
+  Future<void> setFlagged(
+    RemoteFolder folder,
+    List<int> uids, {
+    required bool flagged,
+  }) async {
+    final client = _connected;
+    await client.selectMailboxByPath(folder.path);
+    final sequence = MessageSequence.fromIds(uids, isUid: true);
+    await client.uidStore(
+      sequence,
+      [MessageFlags.flagged],
+      action: flagged ? StoreAction.add : StoreAction.remove,
+    );
+  }
+
+  @override
   Future<void> deleteMessages(RemoteFolder folder, List<int> uids) async {
     final client = _connected;
     await client.selectMailboxByPath(folder.path);

@@ -13,6 +13,9 @@ abstract interface class EmailRepository {
 
   Future<EmailMessage?> byId(int id);
 
+  /// Recherche plein texte locale (sujet, expéditeur, aperçu).
+  Future<List<EmailMessage>> search(String query, {int limit});
+
   /// Decrypts and returns the full body of one message.
   Future<String?> loadBody(int emailId);
 

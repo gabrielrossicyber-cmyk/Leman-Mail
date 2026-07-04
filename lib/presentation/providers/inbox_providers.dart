@@ -74,3 +74,10 @@ final remoteContentAllowedProvider =
 
 /// Multi-selection dans la liste (appui long). Vide = mode normal.
 final inboxSelectionProvider = StateProvider<Set<int>>((ref) => {});
+
+/// Résultats de la recherche plein texte locale.
+final searchResultsProvider =
+    FutureProvider.family<List<EmailMessage>, String>((ref, query) {
+  if (query.trim().length < 2) return Future.value(const []);
+  return ref.watch(emailRepositoryProvider).search(query);
+});
