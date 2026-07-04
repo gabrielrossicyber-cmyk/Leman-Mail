@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../data/services/mail/smtp_service.dart';
-import '../../../domain/entities/account.dart';
 import '../../../features/cleanup/smart_cleanup_analyzer.dart';
 import '../../providers/account_providers.dart';
 import '../../providers/core_providers.dart';
