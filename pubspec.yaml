@@ -58,6 +58,7 @@ dependencies:
   workmanager: ^0.5.2
 
   flutter_svg: ^2.0.14
+  open_filex: ^4.5.0
 
 dev_dependencies:
   flutter_test:

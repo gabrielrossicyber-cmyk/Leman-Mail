@@ -11,6 +11,7 @@ import '../../data/repositories/email_repository_impl.dart';
 import '../../data/repositories/health_repository_impl.dart';
 import '../../data/repositories/newsletter_repository_impl.dart';
 import '../../data/services/auth/oauth_service.dart';
+import '../../data/services/mail/attachment_service.dart';
 import '../../data/services/notifications/notification_service.dart';
 import '../../data/sync/sync_coordinator.dart';
 import '../../domain/repositories/account_repository.dart';
@@ -149,6 +150,18 @@ final computeInboxHealthProvider = Provider<ComputeInboxHealth>(
 
 final runNewsletterCleanupProvider = Provider<RunNewsletterCleanup>(
   (ref) => RunNewsletterCleanup(ref.watch(newsletterRepositoryProvider)),
+);
+
+final attachmentServiceProvider = Provider<AttachmentService>(
+  (ref) => AttachmentService(
+    ref.watch(databaseProvider),
+    ref.watch(accountRepositoryProvider),
+  ),
+);
+
+/// Brouillons locaux (auto-sauvegardés depuis la composition).
+final draftsProvider = StreamProvider(
+  (ref) => ref.watch(databaseProvider).watchDrafts(),
 );
 
 final syncCoordinatorProvider = Provider<SyncCoordinator>(

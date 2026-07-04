@@ -5,6 +5,7 @@ import '../providers/account_providers.dart';
 import '../screens/accounts/add_account_screen.dart';
 import '../screens/cleanup/smart_cleanup_screen.dart';
 import '../screens/compose/compose_screen.dart';
+import '../screens/compose/drafts_screen.dart';
 import '../screens/home/home_shell.dart';
 import '../screens/inbox/conversation_screen.dart';
 import '../screens/inbox/email_detail_screen.dart';
@@ -56,7 +57,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           initialTo: state.uri.queryParameters['to'],
           initialSubject: state.uri.queryParameters['subject'],
           initialBody: state.uri.queryParameters['body'],
+          inReplyTo: state.uri.queryParameters['inReplyTo'],
+          references: state.uri.queryParameters['references'],
+          draftId: int.tryParse(state.uri.queryParameters['draftId'] ?? ''),
         ),
+      ),
+      GoRoute(
+        path: '/drafts',
+        builder: (context, state) => const DraftsScreen(),
       ),
       GoRoute(
         path: '/cleanup',

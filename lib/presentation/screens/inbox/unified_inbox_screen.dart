@@ -401,6 +401,14 @@ class _MailDrawer extends ConsumerWidget {
                   close();
                 },
               ),
+            _DrawerTile(
+              leading: const Icon(Icons.drafts_outlined),
+              label: 'Brouillons',
+              onTap: () {
+                close();
+                context.push('/drafts');
+              },
+            ),
             const Divider(),
             // --- Shortcuts ------------------------------------------------
             _DrawerTile(

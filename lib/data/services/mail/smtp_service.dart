@@ -31,6 +31,8 @@ class SmtpService {
     List<String> cc = const [],
     List<String> bcc = const [],
     List<OutgoingAttachment> attachments = const [],
+    String? inReplyTo,
+    String? references,
   }) async {
     final host = account.smtpHost;
     if (host == null || host.isEmpty) {
@@ -63,6 +65,14 @@ class SmtpService {
         ..cc = cc.map((a) => MailAddress(null, a)).toList()
         ..bcc = bcc.map((a) => MailAddress(null, a)).toList()
         ..subject = subject;
+      // En-têtes de fil (RFC 5322) : la réponse s'accroche à la
+      // conversation d'origine chez le destinataire ET dans nos fils.
+      if (inReplyTo != null && inReplyTo.isNotEmpty) {
+        builder.addHeader('In-Reply-To', inReplyTo);
+      }
+      if (references != null && references.isNotEmpty) {
+        builder.addHeader('References', references);
+      }
       if (htmlBody != null) {
         builder.addMultipartAlternative(plainText: textBody, htmlText: htmlBody);
       } else {

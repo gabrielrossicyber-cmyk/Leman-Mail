@@ -9,18 +9,31 @@ import '../../providers/account_providers.dart';
 import '../../providers/core_providers.dart';
 
 /// Rédaction d'un email : compte expéditeur, destinataires multiples,
-/// Cc/Cci repliables, pièces jointes. Envoi via SMTP (comptes IMAP).
+/// Cc/Cci repliables, pièces jointes, en-têtes de fil pour les réponses,
+/// brouillon auto-sauvegardé en quittant. Envoi via SMTP (comptes IMAP).
 class ComposeScreen extends ConsumerStatefulWidget {
   const ComposeScreen({
     super.key,
     this.initialTo,
     this.initialSubject,
     this.initialBody,
+    this.inReplyTo,
+    this.references,
+    this.draftId,
   });
 
   final String? initialTo;
   final String? initialSubject;
   final String? initialBody;
+
+  /// Message-ID du message auquel on répond (en-tête In-Reply-To).
+  final String? inReplyTo;
+
+  /// Chaîne References (racine du fil + message d'origine).
+  final String? references;
+
+  /// Brouillon existant à reprendre.
+  final int? draftId;
 
   @override
   ConsumerState<ComposeScreen> createState() => _ComposeScreenState();
@@ -40,10 +53,68 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
   int? _accountId;
   bool _showCcBcc = false;
   bool _sending = false;
+  bool _sent = false;
+  int? _draftId;
+  String? _inReplyTo;
+  String? _references;
   final List<PlatformFile> _attachments = [];
 
   static final _addressRegex =
       RegExp(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$');
+
+  @override
+  void initState() {
+    super.initState();
+    _draftId = widget.draftId;
+    _inReplyTo = widget.inReplyTo;
+    _references = widget.references;
+    if (_draftId != null) {
+      Future.microtask(_loadDraft);
+    }
+  }
+
+  Future<void> _loadDraft() async {
+    final draft =
+        await ref.read(databaseProvider).draftById(_draftId!);
+    if (draft == null || !mounted) return;
+    setState(() {
+      _to.text = draft.toText;
+      _cc.text = draft.ccText;
+      _bcc.text = draft.bccText;
+      _subject.text = draft.subject;
+      _body.text = draft.body;
+      _accountId = draft.accountId ?? _accountId;
+      _inReplyTo = draft.inReplyTo;
+      _references = draft.referencesHeader;
+      _showCcBcc = draft.ccText.isNotEmpty || draft.bccText.isNotEmpty;
+    });
+  }
+
+  bool get _hasContent =>
+      _to.text.trim().isNotEmpty ||
+      _subject.text.trim().isNotEmpty ||
+      _body.text.trim().isNotEmpty;
+
+  /// Auto-sauvegarde en quittant l'écran : rien n'est jamais perdu.
+  Future<void> _saveDraftOnExit() async {
+    if (_sent) return;
+    final db = ref.read(databaseProvider);
+    if (!_hasContent) {
+      if (_draftId != null) await db.deleteDraftById(_draftId!);
+      return;
+    }
+    _draftId = await db.saveDraft(
+      id: _draftId,
+      accountId: _accountId,
+      to: _to.text,
+      cc: _cc.text,
+      bcc: _bcc.text,
+      subject: _subject.text,
+      body: _body.text,
+      inReplyTo: _inReplyTo,
+      referencesHeader: _references,
+    );
+  }
 
   @override
   void dispose() {
@@ -139,12 +210,18 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
         bcc: _splitAddresses(_bcc.text),
         subject: _subject.text,
         textBody: _body.text,
+        inReplyTo: _inReplyTo,
+        references: _references,
         attachments: [
           for (final file in _attachments)
             if (file.bytes != null)
               OutgoingAttachment(fileName: file.name, bytes: file.bytes!),
         ],
       );
+      _sent = true;
+      if (_draftId != null) {
+        await ref.read(databaseProvider).deleteDraftById(_draftId!);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Email envoyé. ✉️')));
@@ -172,9 +249,13 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
             orElse: () => accounts.first,
           );
 
-    return Scaffold(
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _saveDraftOnExit();
+      },
+      child: Scaffold(
       appBar: AppBar(
-        title: const Text('Nouveau message'),
+        title: Text(_inReplyTo != null ? 'Répondre' : 'Nouveau message'),
         actions: [
           IconButton(
             icon: const Icon(Icons.attach_file),
@@ -348,6 +429,7 @@ class _ComposeScreenState extends ConsumerState<ComposeScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

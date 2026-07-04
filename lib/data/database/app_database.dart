@@ -209,6 +209,26 @@ class PendingOperations extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Brouillon local, auto-sauvegardé quand on quitte la composition avec
+/// du contenu. Purement local : la synchro vers le dossier Drafts IMAP
+/// viendra plus tard.
+class Drafts extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get accountId => integer()
+      .nullable()
+      .references(Accounts, #id, onDelete: KeyAction.setNull)();
+  TextColumn get toText => text().withDefault(const Constant(''))();
+  TextColumn get ccText => text().withDefault(const Constant(''))();
+  TextColumn get bccText => text().withDefault(const Constant(''))();
+  TextColumn get subject => text().withDefault(const Constant(''))();
+  TextColumn get body => text().withDefault(const Constant(''))();
+
+  /// En-têtes de fil si le brouillon est une réponse.
+  TextColumn get inReplyTo => text().nullable()();
+  TextColumn get referencesHeader => text().nullable()();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 class SyncStates extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get accountId =>
@@ -246,6 +266,7 @@ class SyncStates extends Table {
     Badges,
     SyncStates,
     PendingOperations,
+    Drafts,
   ],
   daos: [AccountsDao, EmailsDao, NewslettersDao, HealthDao],
 )
@@ -256,7 +277,49 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
+
+  // ---- Brouillons -----------------------------------------------------------
+
+  Stream<List<Draft>> watchDrafts() => (select(drafts)
+        ..orderBy([(d) => OrderingTerm.desc(d.updatedAt)]))
+      .watch();
+
+  Future<Draft?> draftById(int id) =>
+      (select(drafts)..where((d) => d.id.equals(id))).getSingleOrNull();
+
+  /// Insère ou met à jour ; retourne l'id du brouillon.
+  Future<int> saveDraft({
+    int? id,
+    int? accountId,
+    required String to,
+    required String cc,
+    required String bcc,
+    required String subject,
+    required String body,
+    String? inReplyTo,
+    String? referencesHeader,
+  }) async {
+    final companion = DraftsCompanion(
+      accountId: Value(accountId),
+      toText: Value(to),
+      ccText: Value(cc),
+      bccText: Value(bcc),
+      subject: Value(subject),
+      body: Value(body),
+      inReplyTo: Value(inReplyTo),
+      referencesHeader: Value(referencesHeader),
+      updatedAt: Value(DateTime.now()),
+    );
+    if (id == null) {
+      return into(drafts).insert(companion);
+    }
+    await (update(drafts)..where((d) => d.id.equals(id))).write(companion);
+    return id;
+  }
+
+  Future<void> deleteDraftById(int id) =>
+      (delete(drafts)..where((d) => d.id.equals(id))).go();
 
   /// Recherche plein texte (FTS5, table à contenu externe) synchronisée
   /// avec `emails` par triggers — couvre sujet, expéditeur et aperçu.
@@ -308,6 +371,9 @@ class AppDatabase extends _$AppDatabase {
               'INSERT INTO emails_fts(rowid, subject, from_name, from_address, snippet) '
               'SELECT id, subject, from_name, from_address, snippet FROM emails',
             );
+          }
+          if (from < 3) {
+            await m.createTable(drafts);
           }
         },
         beforeOpen: (details) async {

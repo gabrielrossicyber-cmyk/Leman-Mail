@@ -95,11 +95,13 @@ class ImapService implements MailSyncService {
 
   /// Sélectionne un dossier à partir du chemin protocolaire stocké,
   /// en laissant enough_mail gérer le quoting de la commande SELECT.
+  /// La liste de flags doit être modifiable : la bibliothèque y ajoute
+  /// des drapeaux au fil des réponses du serveur.
   Future<Mailbox> _selectFolder(RemoteFolder folder) {
     final mailbox = Mailbox(
       encodedName: folder.name,
       encodedPath: folder.path,
-      flags: const [],
+      flags: <MailboxFlag>[],
       pathSeparator: '/',
     );
     return _connected.selectMailbox(mailbox);
@@ -128,32 +130,49 @@ class ImapService implements MailSyncService {
     final exists = mailbox.messagesExists;
     if (exists == 0) return const [];
 
-    FetchImapResult fetch;
-    if (sinceUid <= 0) {
-      // Initial sync: only the [limit] most recent messages, addressed by
-      // sequence numbers — never the whole mailbox.
-      final start = exists > limit ? exists - limit + 1 : 1;
-      fetch = await client.fetchMessages(
-        MessageSequence.fromRange(start, exists),
-        _fetchCriteria,
-      );
-    } else {
-      // Incremental sync: everything newer than the stored UID cursor.
-      final uidNext = mailbox.uidNext;
-      if (uidNext != null && uidNext <= sinceUid + 1) return const [];
-      fetch = await client.uidFetchMessages(
-        MessageSequence.fromRangeToLast(sinceUid + 1, isUidSequence: true),
-        _fetchCriteria,
-      );
+    // Curseur à jour ? Rien à récupérer.
+    final uidNext = mailbox.uidNext;
+    if (sinceUid > 0 && uidNext != null && uidNext <= sinceUid + 1) {
+      return const [];
     }
 
-    final result = <RawEmail>[
+    // Une seule primitive pour l'initial ET l'incrémental : fenêtre des
+    // [limit] derniers messages par numéros de séquence, filtrée ensuite
+    // par UID > curseur. Même plafond de perte que l'ancien chemin
+    // UID FETCH x:* (troncature à [limit]), mais un seul chemin de code.
+    final start = exists > limit ? exists - limit + 1 : 1;
+    final fetch = await client.fetchMessages(
+      MessageSequence.fromRange(start, exists),
+      _fetchCriteria,
+    );
+
+    return <RawEmail>[
       for (final message in fetch.messages)
         if ((message.uid ?? 0) > sinceUid) _toRawEmail(message),
     ]..sort((a, b) => a.uid.compareTo(b.uid));
-    return result.length > limit
-        ? result.sublist(result.length - limit)
-        : result;
+  }
+
+  /// Télécharge une pièce jointe à la demande : re-fetch du message
+  /// complet par UID puis extraction du segment MIME correspondant.
+  Future<List<int>?> fetchAttachmentBytes(
+    RemoteFolder folder,
+    int uid,
+    String fileName,
+  ) async {
+    final client = _connected;
+    await _selectFolder(folder);
+    final fetch = await client.uidFetchMessages(
+      MessageSequence.fromIds([uid], isUid: true),
+      '(UID BODY.PEEK[])',
+    );
+    if (fetch.messages.isEmpty) return null;
+    final message = fetch.messages.first;
+    for (final info in message.findContentInfo()) {
+      if (info.fileName == fileName) {
+        return message.getPart(info.fetchId)?.decodeContentBinary();
+      }
+    }
+    return null;
   }
 
   RawEmail _toRawEmail(MimeMessage message) {

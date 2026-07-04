@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -58,6 +59,15 @@ class EmailDetailScreen extends ConsumerWidget {
                     'subject': email.subject.startsWith('Re:')
                         ? email.subject
                         : 'Re: ${email.subject}',
+                    // En-têtes de fil : la réponse s'accroche à la
+                    // conversation d'origine.
+                    'inReplyTo': email.messageId,
+                    'references': [
+                      if (email.threadId != null &&
+                          email.threadId != email.messageId)
+                        email.threadId!,
+                      email.messageId,
+                    ].join(' '),
                   },
                 ).toString(),
               ),
@@ -213,19 +223,7 @@ class _EmailDetailView extends ConsumerWidget {
                     side: attachment.isDangerous
                         ? const BorderSide(color: AppTheme.riskHigh)
                         : null,
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            attachment.isDangerous
-                                ? '🔴 Pièce jointe dangereuse — '
-                                    'ouverture bloquée par Leman Mail.'
-                                : 'Téléchargement des pièces jointes : '
-                                    'disponible dans une prochaine version.',
-                          ),
-                        ),
-                      );
-                    },
+                    onPressed: () => _openAttachment(context, ref, attachment),
                   ),
               ],
             ),
@@ -428,6 +426,48 @@ class _HeaderDetailRow extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Security dot + analysis sheet
 // ---------------------------------------------------------------------------
+
+extension on _EmailDetailView {
+  Future<void> _openAttachment(
+    BuildContext context,
+    WidgetRef ref,
+    EmailAttachmentInfo attachment,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (attachment.isDangerous) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            '🔴 Pièce jointe dangereuse — ouverture bloquée par Leman Mail.',
+          ),
+        ),
+      );
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(content: Text('Téléchargement de ${attachment.fileName}…')),
+    );
+    try {
+      final path = await ref.read(attachmentServiceProvider).downloadToTemp(
+            emailId: email.id,
+            fileName: attachment.fileName,
+          );
+      messenger.hideCurrentSnackBar();
+      final result = await OpenFilex.open(path);
+      if (result.type != ResultType.done) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Aucune application pour ouvrir ce fichier.'),
+          ),
+        );
+      }
+    } on Object catch (error) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('Échec : $error')));
+    }
+  }
+}
 
 class _SecurityDot extends StatelessWidget {
   const _SecurityDot({required this.email});
