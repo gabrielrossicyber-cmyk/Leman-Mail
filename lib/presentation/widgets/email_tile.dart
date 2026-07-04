@@ -4,12 +4,23 @@ import 'package:intl/intl.dart';
 import '../../domain/entities/email_message.dart';
 import 'risk_badge.dart';
 
-/// One row of the unified inbox.
+/// One row of the unified inbox, with multi-selection support:
+/// long-press enters selection mode, the avatar becomes a check mark.
 class EmailTile extends StatelessWidget {
-  const EmailTile({super.key, required this.email, this.onTap});
+  const EmailTile({
+    super.key,
+    required this.email,
+    this.onTap,
+    this.onLongPress,
+    this.selected = false,
+    this.selectionMode = false,
+  });
 
   final EmailMessage email;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool selected;
+  final bool selectionMode;
 
   @override
   Widget build(BuildContext context) {
@@ -18,15 +29,31 @@ class EmailTile extends StatelessWidget {
 
     return ListTile(
       onTap: onTap,
-      leading: CircleAvatar(
-        backgroundColor: theme.colorScheme.primaryContainer,
-        child: Text(
-          (email.fromName.isNotEmpty ? email.fromName : email.fromAddress)
-              .substring(0, 1)
-              .toUpperCase(),
-          style: TextStyle(color: theme.colorScheme.onPrimaryContainer),
-        ),
-      ),
+      onLongPress: onLongPress,
+      selected: selected,
+      selectedTileColor: theme.colorScheme.primaryContainer,
+      leading: selectionMode
+          ? CircleAvatar(
+              backgroundColor: selected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.surfaceContainerHighest,
+              child: Icon(
+                selected ? Icons.check : Icons.circle_outlined,
+                color: selected
+                    ? theme.colorScheme.onPrimary
+                    : theme.colorScheme.outline,
+                size: 20,
+              ),
+            )
+          : CircleAvatar(
+              backgroundColor: theme.colorScheme.primaryContainer,
+              child: Text(
+                (email.fromName.isNotEmpty ? email.fromName : email.fromAddress)
+                    .substring(0, 1)
+                    .toUpperCase(),
+                style: TextStyle(color: theme.colorScheme.onPrimaryContainer),
+              ),
+            ),
       title: Row(
         children: [
           Expanded(
@@ -37,6 +64,15 @@ class EmailTile extends StatelessWidget {
               style: TextStyle(fontWeight: weight),
             ),
           ),
+          if (email.isFlagged)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Icon(
+                Icons.star,
+                size: 15,
+                color: theme.colorScheme.secondary,
+              ),
+            ),
           RiskBadge(level: email.phishingLevel, compact: true),
           const SizedBox(width: 6),
           Text(

@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../domain/entities/account.dart';
+import '../../../domain/entities/email_message.dart';
 import '../../providers/account_providers.dart';
+import '../../providers/core_providers.dart';
 import '../../providers/inbox_providers.dart';
 import '../../widgets/email_tile.dart';
 
@@ -49,43 +51,49 @@ class UnifiedInboxScreen extends ConsumerWidget {
             .where((a) => a.id == selectedAccountId)
             .firstOrNull;
 
+    final selection = ref.watch(inboxSelectionProvider);
+    final selectionMode = selection.isNotEmpty;
+    final emailList = emails.valueOrNull ?? [];
+
     return Scaffold(
       drawer: _MailDrawer(
         accounts: accountList,
         selectedAccountId: selectedAccountId,
         selectedFolder: folder,
       ),
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(folder.label),
-            Text(
-              selectedAccount?.email ?? 'Tous les comptes',
-              style: Theme.of(context).textTheme.bodySmall,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-        actions: [
-          if (sync.isLoading)
-            const Padding(
-              padding: EdgeInsets.all(14),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+      appBar: selectionMode
+          ? _SelectionAppBar(selection: selection, emails: emailList)
+          : AppBar(
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(folder.label),
+                  Text(
+                    selectedAccount?.email ?? 'Tous les comptes',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.sync),
-              tooltip: 'Synchroniser',
-              onPressed: () =>
-                  ref.read(syncControllerProvider.notifier).syncNow(),
+              actions: [
+                if (sync.isLoading)
+                  const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.sync),
+                    tooltip: 'Synchroniser',
+                    onPressed: () =>
+                        ref.read(syncControllerProvider.notifier).syncNow(),
+                  ),
+              ],
             ),
-        ],
-      ),
       body: Column(
         children: [
           // Quick filters — the only horizontal row kept on the main page.
@@ -128,9 +136,26 @@ class UnifiedInboxScreen extends ConsumerWidget {
                         ),
                         itemBuilder: (context, index) {
                           final email = list[index];
+                          final isSelected = selection.contains(email.id);
+
+                          void toggleSelection() {
+                            final ids = {...selection};
+                            isSelected
+                                ? ids.remove(email.id)
+                                : ids.add(email.id);
+                            ref
+                                .read(inboxSelectionProvider.notifier)
+                                .state = ids;
+                          }
+
                           return EmailTile(
                             email: email,
-                            onTap: () => context.push('/email/${email.id}'),
+                            selected: isSelected,
+                            selectionMode: selectionMode,
+                            onLongPress: toggleSelection,
+                            onTap: selectionMode
+                                ? toggleSelection
+                                : () => context.push('/email/${email.id}'),
                           );
                         },
                       ),
@@ -142,6 +167,117 @@ class UnifiedInboxScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Barre d'actions contextuelle du mode sélection multiple :
+/// marquer lu/non lu, favoris, supprimer, tout sélectionner.
+class _SelectionAppBar extends ConsumerWidget implements PreferredSizeWidget {
+  const _SelectionAppBar({required this.selection, required this.emails});
+
+  final Set<int> selection;
+  final List<EmailMessage> emails;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final repo = ref.read(emailRepositoryProvider);
+    final ids = selection.toList();
+    final selectedEmails =
+        emails.where((e) => selection.contains(e.id)).toList();
+    final allFlagged =
+        selectedEmails.isNotEmpty && selectedEmails.every((e) => e.isFlagged);
+
+    void clear() =>
+        ref.read(inboxSelectionProvider.notifier).state = {};
+
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        tooltip: 'Annuler la sélection',
+        onPressed: clear,
+      ),
+      title: Text('${selection.length} sélectionné(s)'),
+      actions: [
+        IconButton(
+          icon: Icon(allFlagged ? Icons.star : Icons.star_outline),
+          tooltip: allFlagged ? 'Retirer des favoris' : 'Ajouter aux favoris',
+          onPressed: () async {
+            await repo.setFlagged(ids, flagged: !allFlagged);
+            clear();
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete_outline),
+          tooltip: 'Supprimer',
+          onPressed: () async {
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('Supprimer ?'),
+                content: Text(
+                  'Supprimer ${selection.length} email(s) de cet appareil ?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('Annuler'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('Supprimer'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed == true) {
+              await repo.delete(ids);
+              clear();
+            }
+          },
+        ),
+        PopupMenuButton<String>(
+          onSelected: (action) async {
+            switch (action) {
+              case 'read':
+                await repo.markRead(ids);
+                clear();
+              case 'unread':
+                await repo.markRead(ids, read: false);
+                clear();
+              case 'all':
+                ref.read(inboxSelectionProvider.notifier).state =
+                    {for (final e in emails) e.id};
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: 'read',
+              child: ListTile(
+                leading: Icon(Icons.mark_email_read_outlined),
+                title: Text('Marquer comme lu'),
+              ),
+            ),
+            PopupMenuItem(
+              value: 'unread',
+              child: ListTile(
+                leading: Icon(Icons.mark_email_unread_outlined),
+                title: Text('Marquer comme non lu'),
+              ),
+            ),
+            PopupMenuItem(
+              value: 'all',
+              child: ListTile(
+                leading: Icon(Icons.select_all),
+                title: Text('Tout sélectionner'),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

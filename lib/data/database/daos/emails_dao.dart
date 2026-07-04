@@ -64,6 +64,10 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
       (update(emails)..where((e) => e.id.isIn(ids)))
           .write(EmailsCompanion(isRead: Value(read)));
 
+  Future<void> setFlagged(List<int> ids, {required bool flagged}) =>
+      (update(emails)..where((e) => e.id.isIn(ids)))
+          .write(EmailsCompanion(isFlagged: Value(flagged)));
+
   Future<void> deleteByIds(List<int> ids) =>
       (delete(emails)..where((e) => e.id.isIn(ids))).go();
 

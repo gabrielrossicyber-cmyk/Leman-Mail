@@ -31,6 +31,22 @@ class EmailDetailScreen extends ConsumerWidget {
         actions: [
           if (detail.valueOrNull?.email case final email?) ...[
             IconButton(
+              icon: Icon(
+                email.isFlagged ? Icons.star : Icons.star_outline,
+                color: email.isFlagged
+                    ? Theme.of(context).colorScheme.secondary
+                    : null,
+              ),
+              tooltip:
+                  email.isFlagged ? 'Retirer des favoris' : 'Ajouter aux favoris',
+              onPressed: () async {
+                await ref
+                    .read(emailRepositoryProvider)
+                    .setFlagged([emailId], flagged: !email.isFlagged);
+                ref.invalidate(emailDetailProvider(emailId));
+              },
+            ),
+            IconButton(
               icon: const Icon(Icons.reply_outlined),
               tooltip: 'Répondre',
               onPressed: () => context.push(

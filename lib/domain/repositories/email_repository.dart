@@ -17,6 +17,7 @@ abstract interface class EmailRepository {
   Future<String?> loadBody(int emailId);
 
   Future<void> markRead(List<int> emailIds, {bool read});
+  Future<void> setFlagged(List<int> emailIds, {required bool flagged});
   Future<void> delete(List<int> emailIds);
   Future<void> blockSender(String pattern, {String reason});
 

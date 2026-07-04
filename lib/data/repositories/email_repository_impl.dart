@@ -53,6 +53,10 @@ class EmailRepositoryImpl implements EmailRepository {
       _db.emailsDao.markRead(emailIds, read: read);
 
   @override
+  Future<void> setFlagged(List<int> emailIds, {required bool flagged}) =>
+      _db.emailsDao.setFlagged(emailIds, flagged: flagged);
+
+  @override
   Future<void> delete(List<int> emailIds) =>
       _db.emailsDao.deleteByIds(emailIds);
 

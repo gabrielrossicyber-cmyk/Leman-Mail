@@ -71,3 +71,6 @@ final emailDetailProvider =
 /// load images manually for one message.
 final remoteContentAllowedProvider =
     StateProvider.family<bool, int>((ref, emailId) => false);
+
+/// Multi-selection dans la liste (appui long). Vide = mode normal.
+final inboxSelectionProvider = StateProvider<Set<int>>((ref) => {});
