@@ -28,11 +28,21 @@ class ProviderPreset {
 }
 
 const providerPresets = <ProviderPreset>[
+  // Gmail en IMAP + mot de passe d'application : évite les « restricted
+  // scopes » Google et l'audit CASA annuel (~500-4500 USD/an) exigé pour
+  // l'API Gmail. Le bouton « Se connecter avec Google » (OAuth) sera
+  // proposé quand la revue CASA sera engagée.
   ProviderPreset(
     provider: MailProvider.gmail,
     label: 'Gmail',
-    authMethod: AuthMethod.oauth2,
-    usesNativeApi: true,
+    authMethod: AuthMethod.password,
+    imapHost: 'imap.gmail.com',
+    smtpHost: 'smtp.gmail.com',
+    helpText: '1. Activez la validation en deux étapes sur votre compte '
+        'Google.\n'
+        '2. Créez un mot de passe d\'application sur '
+        'myaccount.google.com/apppasswords.\n'
+        '3. Saisissez-le ici (pas votre mot de passe Google habituel).',
   ),
   ProviderPreset(
     provider: MailProvider.outlook,

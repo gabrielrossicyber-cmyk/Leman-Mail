@@ -111,14 +111,22 @@ class SyncCoordinator {
   final OAuthService _oauth;
   final MailSyncService Function(domain.Account) _serviceFactory;
 
-  static MailSyncService _defaultFactory(domain.Account account) =>
-      switch (account.provider) {
+  /// Le backend suit la MÉTHODE d'authentification, pas le fournisseur :
+  /// un compte Gmail en IMAP + mot de passe d'application utilise le
+  /// client IMAP (aucun scope Google, pas d'audit CASA) ; les API natives
+  /// ne servent qu'aux comptes OAuth.
+  static MailSyncService _defaultFactory(domain.Account account) {
+    if (account.authMethod == domain.AuthMethod.oauth2) {
+      return switch (account.provider) {
         domain.MailProvider.gmail => GmailApiService(),
         domain.MailProvider.outlook ||
         domain.MailProvider.microsoft365 =>
           MicrosoftGraphService(),
         _ => ImapService(),
       };
+    }
+    return ImapService();
+  }
 
   /// Synchronizes every enabled account. Returns the number of new emails.
   ///
