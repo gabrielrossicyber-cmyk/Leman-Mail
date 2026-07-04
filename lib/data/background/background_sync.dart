@@ -72,24 +72,26 @@ void backgroundSyncDispatcher() {
 }
 
 /// À appeler une fois au démarrage de l'app (premier plan).
+///
+/// Ne doit JAMAIS faire échouer le démarrage : tout est best effort.
 Future<void> scheduleBackgroundSync() async {
-  await Workmanager().initialize(backgroundSyncDispatcher);
-  if (Platform.isAndroid) {
-    await Workmanager().registerPeriodicTask(
-      'leman-mail-periodic-sync',
-      backgroundSyncTaskName,
-      frequency: const Duration(minutes: 15),
-      constraints: Constraints(networkType: NetworkType.connected),
-      existingWorkPolicy: ExistingWorkPolicy.keep,
-    );
-  } else if (Platform.isIOS) {
-    // iOS : l'enregistrement du BGTask se fait côté natif (Info.plist +
-    // AppDelegate, voir docs/DEPLOYMENT.md). On planifie la première fenêtre.
-    await Workmanager().registerPeriodicTask(
-      'leman-mail-periodic-sync',
-      backgroundSyncTaskName,
-      frequency: const Duration(minutes: 15),
-      constraints: Constraints(networkType: NetworkType.connected),
-    );
+  try {
+    await Workmanager().initialize(backgroundSyncDispatcher);
+    if (Platform.isAndroid) {
+      // registerPeriodicTask est une API Android (WorkManager).
+      await Workmanager().registerPeriodicTask(
+        'leman-mail-periodic-sync',
+        backgroundSyncTaskName,
+        frequency: const Duration(minutes: 15),
+        constraints: Constraints(networkType: NetworkType.connected),
+        existingWorkPolicy: ExistingWorkPolicy.keep,
+      );
+    }
+    // iOS : la planification passe par BGTaskScheduler côté natif
+    // (Info.plist + AppDelegate, voir docs/DEPLOYMENT.md). Tant que cette
+    // configuration n'est pas en place, aucune tâche n'est enregistrée ici —
+    // l'IDLE au premier plan et la synchro manuelle couvrent le besoin.
+  } on Exception {
+    // Plugin absent ou plateforme non configurée : l'app démarre quand même.
   }
 }

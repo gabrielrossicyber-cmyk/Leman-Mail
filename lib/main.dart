@@ -18,9 +18,14 @@ Future<void> main() async {
   final masterKey = await secureStorage.obtainMasterKey();
 
   // Notifications locales (canaux + permission) et synchro périodique
-  // en arrière-plan.
+  // en arrière-plan — best effort : le démarrage de l'app ne doit jamais
+  // échouer à cause d'un plugin de notification.
   final notifications = NotificationService();
-  await notifications.init();
+  try {
+    await notifications.init();
+  } on Exception {
+    // Permission refusée ou plugin indisponible : l'app reste utilisable.
+  }
   await scheduleBackgroundSync();
 
   runApp(
