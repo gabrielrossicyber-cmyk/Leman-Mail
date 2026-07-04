@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 
-/// Leman Mail Material 3 themes.
-///
-/// Brand: deep "Léman lake" blue with a security-green accent, high
-/// contrast in both modes, shared component shapes.
+import 'brand.dart';
+
+/// Leman Mail Material 3 themes, derived entirely from [Brand].
 abstract final class AppTheme {
-  static const _seed = Color(0xFF0B5394); // Léman blue
-  static const riskLow = Color(0xFF2E7D32);
-  static const riskMedium = Color(0xFFF9A825);
-  static const riskHigh = Color(0xFFC62828);
+  static const riskLow = Brand.riskLow;
+  static const riskMedium = Brand.riskMedium;
+  static const riskHigh = Brand.riskHigh;
 
   static ThemeData light() => _base(Brightness.light);
 
@@ -16,12 +14,13 @@ abstract final class AppTheme {
 
   static ThemeData _base(Brightness brightness) {
     final scheme = ColorScheme.fromSeed(
-      seedColor: _seed,
+      seedColor: Brand.primary,
       brightness: brightness,
     );
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      fontFamily: Brand.displayFontFamily,
       appBarTheme: AppBarTheme(
         centerTitle: false,
         backgroundColor: scheme.surface,
