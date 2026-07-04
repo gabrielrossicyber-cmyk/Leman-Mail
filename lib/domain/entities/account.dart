@@ -27,7 +27,7 @@ class Account {
     this.smtpHost,
     this.smtpPort = 465,
     this.smtpTls = true,
-    this.colorValue = 0xFF0B5394,
+    this.colorValue = 0xFF551112, // bordeaux Leman Cyber Security
     this.isEnabled = true,
     this.mfaEnabled = false,
     this.lastSyncAt,

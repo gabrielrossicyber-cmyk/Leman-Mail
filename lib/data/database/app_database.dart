@@ -29,7 +29,7 @@ class Accounts extends Table {
   TextColumn get smtpHost => text().nullable()();
   IntColumn get smtpPort => integer().withDefault(const Constant(465))();
   BoolColumn get smtpTls => boolean().withDefault(const Constant(true))();
-  IntColumn get colorValue => integer().withDefault(const Constant(0xFF0B5394))();
+  IntColumn get colorValue => integer().withDefault(const Constant(0xFF551112))();
   BoolColumn get isEnabled => boolean().withDefault(const Constant(true))();
   BoolColumn get mfaEnabled => boolean().withDefault(const Constant(false))();
   DateTimeColumn get lastSyncAt => dateTime().nullable()();
