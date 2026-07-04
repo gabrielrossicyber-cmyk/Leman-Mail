@@ -44,4 +44,16 @@ class SecureStorageService {
 
   Future<void> deleteAccountSecret(String accountUuid) =>
       _storage.delete(key: AppConstants.accountSecretKey(accountUuid));
+
+  // ---- Préférences sensibles (verrouillage d'app, etc.) --------------------
+
+  Future<bool> readBool(String key, {bool defaultValue = false}) async =>
+      switch (await _storage.read(key: key)) {
+        'true' => true,
+        'false' => false,
+        _ => defaultValue,
+      };
+
+  Future<void> writeBool(String key, bool value) =>
+      _storage.write(key: key, value: value.toString());
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/constants/app_constants.dart';
 import '../../core/security/biometric_service.dart';
 import '../../core/security/crypto_service.dart';
 import '../../core/security/secure_storage_service.dart';
@@ -57,6 +58,44 @@ final appLifecycleProvider =
 
 final notificationServiceProvider =
     Provider<NotificationService>((ref) => NotificationService());
+
+/// Verrouillage biométrique : préférence persistée en secure storage.
+class AppLockEnabledNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() => ref
+      .read(secureStorageProvider)
+      .readBool(AppConstants.appLockEnabledKey);
+
+  /// Active/désactive le verrouillage. L'activation exige une
+  /// authentification biométrique réussie (preuve que l'appareil la
+  /// supporte — sinon l'utilisateur s'enfermerait dehors).
+  Future<bool> setEnabled(bool enabled) async {
+    if (enabled) {
+      final ok = await ref
+          .read(biometricServiceProvider)
+          .authenticate(reason: 'Activer le verrouillage de Leman Mail');
+      if (!ok) return false;
+    }
+    await ref
+        .read(secureStorageProvider)
+        .writeBool(AppConstants.appLockEnabledKey, enabled);
+    state = AsyncData(enabled);
+    if (!enabled) {
+      ref.read(appLockedProvider.notifier).state = false;
+    }
+    return true;
+  }
+}
+
+final appLockEnabledProvider =
+    AsyncNotifierProvider<AppLockEnabledNotifier, bool>(
+  AppLockEnabledNotifier.new,
+);
+
+/// L'app est-elle actuellement verrouillée ? Initialisé au démarrage
+/// (override dans main.dart) et re-verrouillé à chaque mise en
+/// arrière-plan quand la préférence est active.
+final appLockedProvider = StateProvider<bool>((ref) => false);
 
 // ---- Engines ---------------------------------------------------------------
 

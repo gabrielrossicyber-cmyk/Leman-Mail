@@ -10,6 +10,7 @@ abstract final class AppConstants {
 
   /// Secure storage keys.
   static const masterKeyStorageKey = 'leman_master_key_v1';
+  static const appLockEnabledKey = 'app_lock_enabled';
   static String accountSecretKey(String accountUuid) =>
       'account_secret_$accountUuid';
 

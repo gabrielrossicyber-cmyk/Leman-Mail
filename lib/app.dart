@@ -7,6 +7,7 @@ import 'core/theme/app_theme.dart';
 import 'presentation/providers/account_providers.dart';
 import 'presentation/providers/core_providers.dart';
 import 'presentation/router/app_router.dart';
+import 'presentation/widgets/lock_overlay.dart';
 
 class LemanMailApp extends ConsumerStatefulWidget {
   const LemanMailApp({super.key});
@@ -32,6 +33,10 @@ class _LemanMailAppState extends ConsumerState<LemanMailApp> {
           ref.read(syncControllerProvider.notifier).syncNow();
         } else if (state == AppLifecycleState.paused) {
           ref.read(imapIdleServiceProvider).stop();
+          // Re-verrouille à la mise en arrière-plan si l'option est active.
+          if (ref.read(appLockEnabledProvider).valueOrNull ?? false) {
+            ref.read(appLockedProvider.notifier).state = true;
+          }
         }
       },
     );
@@ -57,6 +62,7 @@ class _LemanMailAppState extends ConsumerState<LemanMailApp> {
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+    final locked = ref.watch(appLockedProvider);
 
     // Nouveau compte ajouté / supprimé → redémarre les écouteurs IDLE.
     ref.listen(accountsProvider, (previous, next) {
@@ -79,6 +85,14 @@ class _LemanMailAppState extends ConsumerState<LemanMailApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // L'écran de verrouillage recouvre le navigateur entier : rien
+      // n'est visible ni interactif tant que la biométrie n'a pas réussi.
+      builder: (context, child) => Stack(
+        children: [
+          if (child != null) child,
+          if (locked) const LockOverlay(),
+        ],
+      ),
     );
   }
 }

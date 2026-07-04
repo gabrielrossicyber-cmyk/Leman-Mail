@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'app.dart';
+import 'core/constants/app_constants.dart';
 import 'core/security/secure_storage_service.dart';
 import 'data/background/background_sync.dart';
 import 'data/services/notifications/notification_service.dart';
@@ -16,6 +17,11 @@ Future<void> main() async {
   // database — bodies are encrypted with it.
   final secureStorage = SecureStorageService();
   final masterKey = await secureStorage.obtainMasterKey();
+
+  // App verrouillée dès le premier frame si la préférence est active :
+  // aucun contenu ne doit être visible avant l'authentification.
+  final lockAtLaunch =
+      await secureStorage.readBool(AppConstants.appLockEnabledKey);
 
   // Notifications locales (canaux + permission) et synchro périodique
   // en arrière-plan — best effort : le démarrage de l'app ne doit jamais
@@ -34,6 +40,7 @@ Future<void> main() async {
         masterKeyProvider.overrideWithValue(masterKey),
         secureStorageProvider.overrideWithValue(secureStorage),
         notificationServiceProvider.overrideWithValue(notifications),
+        appLockedProvider.overrideWith((ref) => lockAtLaunch),
       ],
       child: const LemanMailApp(),
     ),

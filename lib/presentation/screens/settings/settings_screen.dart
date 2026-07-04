@@ -85,21 +85,22 @@ class SettingsScreen extends ConsumerWidget {
           SwitchListTile(
             secondary: const Icon(Icons.fingerprint),
             title: const Text('Verrouillage biométrique'),
-            subtitle:
-                const Text('Face ID / empreinte à l\'ouverture de l\'app'),
-            value: false, // persisted via preferences in a follow-up
+            subtitle: const Text(
+              'Face ID / empreinte à l\'ouverture et au retour dans l\'app',
+            ),
+            value: ref.watch(appLockEnabledProvider).valueOrNull ?? false,
             onChanged: (enabled) async {
-              if (enabled) {
-                final ok = await ref
-                    .read(biometricServiceProvider)
-                    .authenticate(reason: 'Activer le verrouillage');
-                if (!ok && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Biométrie indisponible sur cet appareil.'),
+              final ok = await ref
+                  .read(appLockEnabledProvider.notifier)
+                  .setEnabled(enabled);
+              if (!ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Authentification refusée ou biométrie indisponible.',
                     ),
-                  );
-                }
+                  ),
+                );
               }
             },
           ),
