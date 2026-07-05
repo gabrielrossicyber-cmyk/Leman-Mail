@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../domain/entities/account.dart';
 import '../../../domain/entities/email_message.dart';
 import '../../providers/account_providers.dart';
@@ -158,7 +159,7 @@ class UnifiedInboxScreen extends ConsumerWidget {
                                 .state = ids;
                           }
 
-                          return EmailTile(
+                          final tile = EmailTile(
                             email: thread.latest,
                             threadCount: thread.count,
                             selected: isSelected,
@@ -176,6 +177,59 @@ class UnifiedInboxScreen extends ConsumerWidget {
                                             ).toString()
                                           : '/email/${thread.latest.id}',
                                     ),
+                          );
+
+                          if (selectionMode) return tile;
+
+                          // Glisser → droite : lu/non lu (réversible, la
+                          // tuile reste). Glisser → gauche : suppression.
+                          final hasUnread = thread.unreadCount > 0;
+                          return Dismissible(
+                            key: ValueKey('swipe-${thread.threadKey}'),
+                            background: _SwipeBackground(
+                              alignment: Alignment.centerLeft,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
+                              icon: hasUnread
+                                  ? Icons.mark_email_read_outlined
+                                  : Icons.mark_email_unread_outlined,
+                              label: hasUnread ? 'Lu' : 'Non lu',
+                            ),
+                            secondaryBackground: const _SwipeBackground(
+                              alignment: Alignment.centerRight,
+                              color: AppTheme.riskHigh,
+                              icon: Icons.delete_outline,
+                              label: 'Supprimer',
+                              foreground: Colors.white,
+                            ),
+                            confirmDismiss: (direction) async {
+                              final repo =
+                                  ref.read(emailRepositoryProvider);
+                              if (direction ==
+                                  DismissDirection.startToEnd) {
+                                await repo.markRead(
+                                  thread.emailIds,
+                                  read: hasUnread,
+                                );
+                                return false; // la tuile reste en place
+                              }
+                              await repo.delete(thread.emailIds);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      thread.count == 1
+                                          ? 'Email supprimé.'
+                                          : '${thread.count} emails '
+                                              'supprimés.',
+                                    ),
+                                  ),
+                                );
+                              }
+                              return true;
+                            },
+                            child: tile,
                           );
                         },
                       ),
@@ -489,6 +543,40 @@ class _DrawerTile extends StatelessWidget {
           ),
         ),
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _SwipeBackground extends StatelessWidget {
+  const _SwipeBackground({
+    required this.alignment,
+    required this.color,
+    required this.icon,
+    required this.label,
+    this.foreground,
+  });
+
+  final Alignment alignment;
+  final Color color;
+  final IconData icon;
+  final String label;
+  final Color? foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = foreground ?? Theme.of(context).colorScheme.onPrimaryContainer;
+    return Container(
+      color: color,
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: fg),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(color: fg, fontSize: 12)),
+        ],
       ),
     );
   }
