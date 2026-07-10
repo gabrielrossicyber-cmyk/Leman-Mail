@@ -160,6 +160,30 @@ void main() {
       expect(sent.single.uid, 3);
     });
 
+    test(
+        'purgeFolderLocal vide le dossier et sa file SANS enfiler '
+        'd\'opérations serveur (cas UIDVALIDITY)', () async {
+      final accountId = await addAccount();
+      final folderId = await addFolder(accountId);
+      final otherFolderId =
+          await addFolder(accountId, path: 'Sent', type: 'sent');
+      final emailId = await addEmail(accountId, folderId, uid: 1);
+      final keptId = await addEmail(accountId, otherFolderId, uid: 2);
+      // Une opération en attente sur le dossier purgé + une sur l'autre.
+      await db.emailsDao.markRead([emailId]);
+      await db.emailsDao.markRead([keptId]);
+
+      await db.emailsDao.purgeFolderLocal(folderId);
+
+      expect(await db.emailsDao.getById(emailId), isNull);
+      expect(await db.emailsDao.getById(keptId), isNotNull);
+      final ops = await db.select(db.pendingOperations).get();
+      // Seule l'opération de l'autre dossier survit ; la purge n'a rien
+      // enfilé de nouveau.
+      expect(ops, hasLength(1));
+      expect(ops.single.folderId, otherFolderId);
+    });
+
     test('watchThread retourne le fil du plus ancien au plus récent',
         () async {
       final accountId = await addAccount();

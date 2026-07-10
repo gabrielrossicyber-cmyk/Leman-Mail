@@ -385,15 +385,31 @@ class SyncCoordinator {
             (s) => s.accountId.equals(account.id) & s.folderId.equals(folderId),
           ))
         .getSingleOrNull();
-    final sinceUid = state?.lastUid ?? 0;
+    var sinceUid = state?.lastUid ?? 0;
 
-    final messages = await service.fetchNewMessages(
+    var result = await service.fetchNewMessages(
       remote,
       sinceUid: sinceUid,
       limit: sinceUid == 0
           ? AppConstants.initialSyncMessageLimit
           : AppConstants.syncPageSize,
     );
+
+    // UIDVALIDITY a changé (restauration/migration côté serveur) : tous
+    // les UID locaux sont caducs — purge du dossier et resync de zéro.
+    final storedValidity = state?.uidValidity;
+    if (storedValidity != null &&
+        result.uidValidity != null &&
+        result.uidValidity != storedValidity) {
+      await _db.emailsDao.purgeFolderLocal(folderId);
+      sinceUid = 0;
+      result = await service.fetchNewMessages(
+        remote,
+        limit: AppConstants.initialSyncMessageLimit,
+      );
+    }
+
+    final messages = result.messages;
     if (messages.isEmpty) return 0;
 
     var maxUid = sinceUid;
@@ -414,7 +430,7 @@ class SyncCoordinator {
           SyncStatesCompanion.insert(
             accountId: account.id,
             folderId: Value(folderId),
-            uidValidity: Value(remote.uidValidity),
+            uidValidity: Value(result.uidValidity ?? remote.uidValidity),
             lastUid: Value(maxUid),
           ),
           mode: InsertMode.insertOrReplace,

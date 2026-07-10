@@ -64,6 +64,18 @@ class RemoteFolder {
   final int? uidValidity;
 }
 
+/// Résultat d'une passe de récupération sur un dossier.
+class FolderFetchResult {
+  const FolderFetchResult({required this.messages, this.uidValidity});
+
+  final List<RawEmail> messages;
+
+  /// UIDVALIDITY du dossier au moment du fetch (IMAP uniquement). Si elle
+  /// diffère de la valeur stockée, tous les UID locaux sont caducs et le
+  /// dossier doit être resynchronisé de zéro.
+  final int? uidValidity;
+}
+
 /// Common contract for every mail backend. Implementations:
 ///  - [ImapService]           — any IMAP provider
 ///  - [GmailApiService]       — Gmail REST
@@ -77,7 +89,7 @@ abstract interface class MailSyncService {
   Future<List<RemoteFolder>> listFolders();
 
   /// Fetches messages with uid > [sinceUid] (incremental sync).
-  Future<List<RawEmail>> fetchNewMessages(
+  Future<FolderFetchResult> fetchNewMessages(
     RemoteFolder folder, {
     int sinceUid = 0,
     int limit = 50,

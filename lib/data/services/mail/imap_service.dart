@@ -120,20 +120,23 @@ class ImapService implements MailSyncService {
   static const _fetchCriteria = '(UID FLAGS RFC822.SIZE BODY.PEEK[])';
 
   @override
-  Future<List<RawEmail>> fetchNewMessages(
+  Future<FolderFetchResult> fetchNewMessages(
     RemoteFolder folder, {
     int sinceUid = 0,
     int limit = 50,
   }) async {
     final client = _connected;
     final mailbox = await _selectFolder(folder);
+    final uidValidity = mailbox.uidValidity;
     final exists = mailbox.messagesExists;
-    if (exists == 0) return const [];
+    if (exists == 0) {
+      return FolderFetchResult(messages: const [], uidValidity: uidValidity);
+    }
 
     // Curseur à jour ? Rien à récupérer.
     final uidNext = mailbox.uidNext;
     if (sinceUid > 0 && uidNext != null && uidNext <= sinceUid + 1) {
-      return const [];
+      return FolderFetchResult(messages: const [], uidValidity: uidValidity);
     }
 
     // Une seule primitive pour l'initial ET l'incrémental : fenêtre des
@@ -146,10 +149,11 @@ class ImapService implements MailSyncService {
       _fetchCriteria,
     );
 
-    return <RawEmail>[
+    final messages = <RawEmail>[
       for (final message in fetch.messages)
         if ((message.uid ?? 0) > sinceUid) _toRawEmail(message),
     ]..sort((a, b) => a.uid.compareTo(b.uid));
+    return FolderFetchResult(messages: messages, uidValidity: uidValidity);
   }
 
   /// Télécharge une pièce jointe à la demande : re-fetch du message

@@ -83,7 +83,7 @@ class MicrosoftGraphService implements MailSyncService {
   }
 
   @override
-  Future<List<RawEmail>> fetchNewMessages(
+  Future<FolderFetchResult> fetchNewMessages(
     RemoteFolder folder, {
     int sinceUid = 0,
     int limit = 50,
@@ -105,7 +105,8 @@ class MicrosoftGraphService implements MailSyncService {
       final raw = _toRawEmail(message);
       if (raw.uid > sinceUid) result.add(raw);
     }
-    return result;
+    // Les ids Graph sont immuables : pas de notion d'UIDVALIDITY.
+    return FolderFetchResult(messages: result);
   }
 
   RawEmail _toRawEmail(Map<String, dynamic> m) {

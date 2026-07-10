@@ -76,7 +76,7 @@ class GmailApiService implements MailSyncService {
   }
 
   @override
-  Future<List<RawEmail>> fetchNewMessages(
+  Future<FolderFetchResult> fetchNewMessages(
     RemoteFolder folder, {
     int sinceUid = 0,
     int limit = 50,
@@ -102,7 +102,8 @@ class GmailApiService implements MailSyncService {
       );
       emails.add(_toRawEmail(full, uid));
     }
-    return emails;
+    // Les ids Gmail sont immuables : pas de notion d'UIDVALIDITY.
+    return FolderFetchResult(messages: emails);
   }
 
   /// Gmail ids are hex strings that grow monotonically — usable as UID.

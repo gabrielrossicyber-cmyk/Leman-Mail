@@ -116,6 +116,19 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
         await (delete(emails)..where((e) => e.id.isIn(ids))).go();
       });
 
+  /// Purge locale d'un dossier après un changement d'UIDVALIDITY : tous
+  /// les UID stockés sont caducs. Suppression SANS mise en file serveur
+  /// (les messages existent toujours là-bas — seule notre copie est
+  /// invalide), et les opérations en attente du dossier sont abandonnées
+  /// car leurs UID ne désignent plus rien.
+  Future<void> purgeFolderLocal(int folderId) => transaction(() async {
+        await (delete(pendingOperations)
+              ..where((o) => o.folderId.equals(folderId)))
+            .go();
+        await (delete(emails)..where((e) => e.folderId.equals(folderId)))
+            .go();
+      });
+
   // ---- Recherche plein texte (FTS5) ----------------------------------------
 
   /// Construit la requête MATCH : termes entre guillemets + préfixe, pour
